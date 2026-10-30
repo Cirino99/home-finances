@@ -55,5 +55,6 @@ let package = Package(
 
         .testTarget(name: "CoreTests", dependencies: ["Core"], path: "Tests/CoreTests"),
         .testTarget(name: "PersistenceTests", dependencies: ["Persistence"], path: "Tests/PersistenceTests"),
+        .testTarget(name: "AppSecurityTests", dependencies: ["AppSecurity"], path: "Tests/AppSecurityTests"),
     ]
 )

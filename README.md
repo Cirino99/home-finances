@@ -4,8 +4,9 @@
 
 > Documento base per lo sviluppo. Raccoglie le decisioni prese su piattaforme, stack, sicurezza, modello dati, navigazione e schermate.
 > Le voci marcate **[DA CONFERMARE]** sono proposte non ancora approvate.
-> Versione 1.3 — 30 ottobre 2026
+> Versione 1.4 — 30 ottobre 2026
 > **Modifiche:**
+> - 1.4 — decisa la #3: nessuna cancellazione dei dati dopo N PIN errati in v1. La scelta della valuta nell'onboarding arriva con lo strato dati (Sprint 2). Biometria: `domainState` al posto di `evaluatedPolicyDomainState`, deprecato.
 > - 1.1 — la cifratura del database (SQLCipher) è rimandata a una versione futura (§ 13). L'accesso resta protetto da PIN / Face ID.
 > - 1.2 — confermati SQLite + GRDB. La sincronizzazione tra dispositivi è **manuale**, tramite export e import del database dall'app (§ 10).
 > - 1.3 — nome del progetto: repository `home-finances`, progetto Xcode `HomeFinances`, file di export `.homefinances`.
@@ -130,14 +131,15 @@ Pattern:
 | ≥ 8 | Attesa 1 ora per ogni tentativo |
 
 - Il contatore e il timestamp del blocco sono salvati nel Keychain, così non si azzerano reinstallando o cancellando le preferenze.
-- **Nessuna cancellazione automatica dei dati** dopo N tentativi in v1 **[DA CONFERMARE]**.
+- **Nessuna cancellazione automatica dei dati** dopo N tentativi in v1.
+- Il tentativo viene contato **prima** del calcolo dell'hash: chiudere l'app durante la verifica non lo annulla.
 
 ### 5.3 Biometria
 
 - Opzionale. Si attiva dopo l'impostazione del PIN, con una proposta al primo avvio e un interruttore nelle Impostazioni.
 - Sblocco con `LAContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, ...)`.
 - **Cambio delle impronte o dei volti registrati:**
-  - all'attivazione si salva nel Keychain `evaluatedPolicyDomainState`;
+  - all'attivazione si salva nel Keychain `LAContext.domainState.biometry.stateHash` (sostituisce `evaluatedPolicyDomainState`, deprecato da iOS 18 / macOS 15);
   - se al login il valore è diverso, la biometria viene disattivata e l'app chiede il PIN, poi propone di riattivarla.
 - In Info.plist: `NSFaceIDUsageDescription` = "Usa Face ID per sbloccare i tuoi dati finanziari."
 
@@ -358,7 +360,7 @@ In entrambi i casi su Mac c'è la voce di menu **File › Nuova operazione** con
 **Primo avvio (onboarding, 3 passi):**
 1. Benvenuto con una spiegazione breve su privacy e dati solo locali.
 2. Impostazione del PIN a 6 cifre (inserimento + conferma).
-3. Proposta di attivare Face ID / Touch ID (Attiva / Non ora) e scelta della valuta.
+3. Proposta di attivare Face ID / Touch ID (Attiva / Non ora) e scelta della valuta (quest'ultima dallo Sprint 2).
 
 Al termine: salvataggio dell'hash del PIN, creazione del DB, migrazione `v1` e inserimento dei dati iniziali.
 
@@ -652,7 +654,7 @@ Al termine: salvataggio dell'hash del PIN, creazione del DB, migrazione `v1` e i
 |---|---|---|
 | 1 | Posizione del pulsante "Nuova operazione" | **Opzione A** (toolbar + accessorio tab bar), conforme alle HIG |
 | 2 | Valuta | Una sola valuta per tutta l'app in v1 |
-| 3 | Cancellazione dei dati dopo N PIN errati | No in v1 |
+| 3 | ~~Cancellazione dei dati dopo N PIN errati~~ | **Decisa:** no in v1 |
 | 4 | Multi-finestra su Mac | No in v1 |
 | 5 | Ultime 3 operazioni in Home: assolute o del mese selezionato | Assolute |
 | 6 | ~~Libreria di accesso dati~~ | **Decisa:** SQLite + GRDB diretto |
