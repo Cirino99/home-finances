@@ -71,6 +71,7 @@ Principi guida:
 
 ```
 HomeFinances.xcodeproj
+├── Config/                     ← Base.xcconfig + Local.xcconfig (Team di firma, non versionato)
 ├── HomeFinances/               ← target app (sottile: entry point, scene, composizione)
 │   ├── HomeFinancesApp.swift
 │   ├── AppRoot.swift           ← gestione blocco/sblocco + TabView
@@ -87,6 +88,14 @@ HomeFinances.xcodeproj
         ├── OperationEditor/    ← Nuova/Modifica operazione
         └── Settings/
 ```
+
+Configurazione locale:
+
+- Il Team di firma non è nel repository. Prima della prima build:
+  1. copiare `Config/Local.example.xcconfig` in `Config/Local.xcconfig` (ignorato da git);
+  2. inserire il proprio Team ID in `DEVELOPMENT_TEAM`.
+- **Non scegliere il Team dall'editor Signing & Capabilities di Xcode:** lo scriverebbe in `project.pbxproj`, che è versionato.
+- Il Team serve anche su Mac: il Keychain in stile iOS richiede un profilo di provisioning, altrimenti risponde `-34018`.
 
 Regole di dipendenza:
 

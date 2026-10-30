@@ -13,6 +13,8 @@
 /* Begin PBXFileReference section */
 		A10000000000000000000010 /* HomeFinances.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HomeFinances.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000011 /* Packages */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = Packages; sourceTree = "<group>"; };
+		A10000000000000000000012 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
+		A10000000000000000000013 /* Local.example.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.example.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -53,8 +55,18 @@
 			children = (
 				A10000000000000000000021 /* HomeFinances */,
 				A10000000000000000000011 /* Packages */,
+				A10000000000000000000042 /* Config */,
 				A10000000000000000000041 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		A10000000000000000000042 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000012 /* Base.xcconfig */,
+				A10000000000000000000013 /* Local.example.xcconfig */,
+			);
+			path = Config;
 			sourceTree = "<group>";
 		};
 		A10000000000000000000041 /* Products */ = {
@@ -202,9 +214,11 @@
 		};
 		A10000000000000000000081 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A10000000000000000000012 /* Base.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = HomeFinances/HomeFinances.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
@@ -214,8 +228,10 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = HomeFinances/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Home Finances";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Usa Face ID per sbloccare i tuoi dati finanziari.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
@@ -238,9 +254,11 @@
 		};
 		A10000000000000000000082 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A10000000000000000000012 /* Base.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = HomeFinances/HomeFinances.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
@@ -250,8 +268,10 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = HomeFinances/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Home Finances";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Usa Face ID per sbloccare i tuoi dati finanziari.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;

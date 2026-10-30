@@ -1,5 +1,6 @@
 import AppSecurity
 import DesignSystem
+import OSLog
 import SwiftUI
 
 /// Primo avvio (§ 8.1): benvenuto, PIN con conferma, proposta di Face ID / Touch ID.
@@ -180,7 +181,12 @@ struct OnboardingView: View {
             do {
                 try await action()
             } catch {
+                Logger(subsystem: "HomeFinances", category: "Onboarding").error("Onboarding non riuscito: \(String(describing: error), privacy: .public)")
+                #if DEBUG
+                message = "Operazione non riuscita. Riprova.\n\(String(describing: error))"
+                #else
                 message = "Operazione non riuscita. Riprova."
+                #endif
             }
         }
     }

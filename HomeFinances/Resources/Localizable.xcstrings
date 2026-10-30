@@ -1,7 +1,21 @@
 {
   "sourceLanguage" : "it",
   "strings" : {
+    "Blocca" : {
 
+    },
+    "Database aperto" : {
+
+    },
+    "Home Finances" : {
+
+    },
+    "Impossibile aprire il database" : {
+
+    },
+    "SQLite %@" : {
+
+    }
   },
   "version" : "1.0"
 }
