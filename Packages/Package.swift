@@ -54,7 +54,7 @@ let package = Package(
         .target(name: "SettingsFeature", dependencies: ["Core", "DesignSystem", "AppSecurity"], path: "Features/Settings"),
 
         .testTarget(name: "CoreTests", dependencies: ["Core"], path: "Tests/CoreTests"),
-        .testTarget(name: "PersistenceTests", dependencies: ["Persistence"], path: "Tests/PersistenceTests"),
+        .testTarget(name: "PersistenceTests", dependencies: ["Core", "Persistence"], path: "Tests/PersistenceTests"),
         .testTarget(name: "AppSecurityTests", dependencies: ["AppSecurity"], path: "Tests/AppSecurityTests"),
     ]
 )

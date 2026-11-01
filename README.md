@@ -4,8 +4,9 @@
 
 > Documento base per lo sviluppo. Raccoglie le decisioni prese su piattaforme, stack, sicurezza, modello dati, navigazione e schermate.
 > Le voci marcate **[DA CONFERMARE]** sono proposte non ancora approvate.
-> Versione 1.4 — 30 ottobre 2026
+> Versione 1.5 — 1 novembre 2026
 > **Modifiche:**
+> - 1.5 — Sprint 2: i protocolli dei repository stanno in `Core`. La valuta si sceglie dopo il primo sblocco, finché il database non ha i dati iniziali. Importi: scala fissa a 100 per ogni valuta.
 > - 1.4 — decisa la #3: nessuna cancellazione dei dati dopo N PIN errati in v1. La scelta della valuta nell'onboarding arriva con lo strato dati (Sprint 2). Biometria: `domainState` al posto di `evaluatedPolicyDomainState`, deprecato.
 > - 1.1 — la cifratura del database (SQLCipher) è rimandata a una versione futura (§ 13). L'accesso resta protetto da PIN / Face ID.
 > - 1.2 — confermati SQLite + GRDB. La sincronizzazione tra dispositivi è **manuale**, tramite export e import del database dall'app (§ 10).
@@ -101,7 +102,7 @@ Regole di dipendenza:
 
 - `Core` non dipende da nulla.
 - `Persistence` e `Security` dipendono da `Core`.
-- `Features` dipendono da `Core`, `DesignSystem` e dai **protocolli** dei repository, non da GRDB direttamente.
+- `Features` dipendono da `Core`, `DesignSystem` e dai **protocolli** dei repository, definiti in `Core`, non da GRDB direttamente.
 - L'app compone le dipendenze e le inietta tramite `Environment`.
 
 Pattern:
@@ -199,7 +200,7 @@ Per aggiungere SQLCipher in seguito senza riscrivere nulla:
 ### 6.1 Convenzioni
 
 - **ID:** UUID come `TEXT` su ogni tabella, stabili anche in vista di una futura sincronizzazione.
-- **Importi:** `INTEGER` in **unità minori** (centesimi), sempre positivi. Il segno dipende dal `type`. Nell'app si usa `Decimal`. **Mai `Double`.**
+- **Importi:** `INTEGER` in **unità minori** (centesimi), sempre positivi. Il segno dipende dal `kind`. Nell'app si usa `Decimal`. **Mai `Double`.** La scala è fissa a 100 per ogni valuta, coerente con il limite di 2 decimali dell'editor: valute con 3 decimali non sono rappresentabili in v1.
 - **Valuta:** codice ISO 4217 (`EUR`). **In v1 una sola valuta per tutta l'app**, scelta al primo avvio (default dalla `Locale`) **[DA CONFERMARE]**. Lo schema salva comunque la valuta per non precludere il multi-valuta.
 - **Data dell'operazione:** **data di calendario** `TEXT` `YYYY-MM-DD`, senza fuso orario, così un'operazione non cambia mese viaggiando.
 - **Timestamp tecnici** (`created_at`, `updated_at`): `TEXT` ISO 8601 in UTC.
@@ -369,9 +370,10 @@ In entrambi i casi su Mac c'è la voce di menu **File › Nuova operazione** con
 **Primo avvio (onboarding, 3 passi):**
 1. Benvenuto con una spiegazione breve su privacy e dati solo locali.
 2. Impostazione del PIN a 6 cifre (inserimento + conferma).
-3. Proposta di attivare Face ID / Touch ID (Attiva / Non ora) e scelta della valuta (quest'ultima dallo Sprint 2).
+3. Proposta di attivare Face ID / Touch ID (Attiva / Non ora).
+4. Scelta della valuta, dopo lo sblocco, che inserisce i dati iniziali.
 
-Al termine: salvataggio dell'hash del PIN, creazione del DB, migrazione `v1` e inserimento dei dati iniziali.
+Il database viene aperto e migrato all'avvio. Il passo della valuta compare finché il database non ha i dati iniziali: se l'app viene chiusa a metà onboarding, viene riproposto al riavvio dopo lo sblocco con il PIN già scelto.
 
 **Avvii successivi:**
 - Se la biometria è attiva, il prompt biometrico parte **automaticamente** quando appare la schermata.

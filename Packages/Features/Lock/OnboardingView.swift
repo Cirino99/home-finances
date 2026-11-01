@@ -4,7 +4,7 @@ import OSLog
 import SwiftUI
 
 /// Primo avvio (§ 8.1): benvenuto, PIN con conferma, proposta di Face ID / Touch ID.
-/// La scelta della valuta si aggiunge con lo strato dati (Sprint 2).
+/// La scelta della valuta segue dopo lo sblocco: vedi `CurrencySetupView`.
 struct OnboardingView: View {
     private enum Step {
         case welcome
@@ -195,3 +195,4 @@ struct OnboardingView: View {
         appLock.biometry == .unavailable ? "Face ID o Touch ID" : appLock.biometry.displayName
     }
 }
+ 
