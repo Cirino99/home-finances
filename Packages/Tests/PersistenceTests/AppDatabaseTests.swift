@@ -42,7 +42,10 @@ struct AppDatabaseTests {
             }
             for _ in 0..<20 {
                 group.addTask {
-                    let isSeeded = try database.isSeeded()
+                    // Lettura asincrona: più lettori del pool attendono senza bloccare un thread.
+                    let isSeeded = try await database.writer.read { db in
+                        try Row.fetchOne(db, sql: "SELECT 1 FROM account LIMIT 1") != nil
+                    }
                     #expect(isSeeded)
                 }
             }
