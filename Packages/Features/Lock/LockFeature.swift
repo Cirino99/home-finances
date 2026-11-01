@@ -55,23 +55,3 @@ public extension View {
         }
     }
 }
-
-extension BiometryKind {
-    var displayName: String {
-        switch self {
-        case .faceID: "Face ID"
-        case .touchID: "Touch ID"
-        case .opticID: "Optic ID"
-        case .unavailable: "Biometria"
-        }
-    }
-
-    var symbolName: String {
-        switch self {
-        case .faceID: "faceid"
-        case .touchID: "touchid"
-        case .opticID: "opticid"
-        case .unavailable: "lock"
-        }
-    }
-}

@@ -4,8 +4,9 @@
 
 > Documento base per lo sviluppo. Raccoglie le decisioni prese su piattaforme, stack, sicurezza, modello dati, navigazione e schermate.
 > Le voci marcate **[DA CONFERMARE]** sono proposte non ancora approvate.
-> Versione 1.10 — 1 novembre 2026
+> Versione 1.11 — 1 novembre 2026
 > **Modifiche:**
+> - 1.11 — Sprint 6: Impostazioni, categorie, conti, export, import e CSV. Il file importato è trattato come non attendibile (§ 10.4). Condivisione con il foglio di sistema invece di `ShareLink`.
 > - 1.10 — correzioni dalla revisione del codice: attese del PIN misurate senza l'ora modificabile, date sempre gregoriane, PIN reimpostabile se non ci sono dati, biometria legata a un token nel Keychain, ultimo conto attivo protetto, nuovo tentativo di apertura del database, manifest della privacy, colori con varianti chiare e scure.
 > - 1.9 — Sprint 5: Storico con Operazioni, Mesi, Anni, grafici, ricerca e filtri. Nelle split view il primo elemento di `historyPath` è la selezione.
 > - 1.8 — Sprint 4: Home e dettaglio operazione. Decisa la #5: le ultime 3 operazioni sono le più recenti in assoluto.
@@ -361,7 +362,7 @@ In entrambi i casi su Mac c'è la voce di menu **File › Nuova operazione** con
 | Navigazione principale | Tab bar in basso | Tab bar in alto, comprimibile in sidebar | Sidebar |
 | Storico | Stack: elenco → dettaglio | `NavigationSplitView` | `NavigationSplitView`, colonne ridimensionabili |
 | Editor | Sheet `.large` | Sheet `.formSheet` | Sheet sulla finestra |
-| Impostazioni | Ingranaggio in toolbar Home → sheet | Come iPhone | Scena `Settings` (⌘,) |
+| Impostazioni | Ingranaggio in toolbar Home → sheet | Come iPhone | Finestra propria (⌘,), non la scena `Settings`, che centra il tasto indietro |
 | Blocco | Overlay a tutto schermo | Overlay a tutto schermo | Overlay sulla finestra + ⌃⌘L |
 | Scorciatoie | — | Tastiera esterna: ⌘N, ⌘F | ⌘N nuova, ⌘F cerca, ⌘1/⌘2 cambia sezione, ⌫ elimina selezione, ⇧⌘E esporta DB, ⇧⌘I importa DB |
 | Multi-finestra | No | No in v1 | Una sola finestra principale in v1 (`Window`, non `WindowGroup`) **[DA CONFERMARE]** |
@@ -475,7 +476,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 |---|---|
 | Sicurezza | Sblocco con Face ID/Touch ID (switch), Cambia PIN, Blocco automatico (solo Mac: 1/5/15/30 min) |
 | Dati | Gestisci categorie, Gestisci conti, Esporta database, Importa database, Annulla ultimo import, Esporta CSV (§ 10) |
-| Generale | Valuta (in sola lettura dopo la prima operazione in v1) |
+| Generale | Valuta (sempre in sola lettura in v1) |
 | Informazioni | Versione, privacy ("I tuoi dati non lasciano mai questo dispositivo") |
 
 - **Cambia PIN:** chiede il PIN attuale e quello nuovo (con conferma). Poi salva nel Keychain un nuovo salt e il nuovo hash, e azzera il contatore dei tentativi.
@@ -533,8 +534,8 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
   1. copia consistente del DB in un file temporaneo con l'API di backup di GRDB (`try dbPool.backup(to: destinationQueue)`), sicura anche con l'app in uso;
   2. `VACUUM` sulla copia, per un file compatto e senza WAL separato;
   3. consegna all'utente:
-     - **iOS/iPadOS:** `ShareLink`, che include AirDrop, Salva su File, Mail e Messaggi;
-     - **macOS:** `fileExporter`, cioè il pannello Salva.
+     - **iOS/iPadOS:** foglio di condivisione di sistema, che include AirDrop, Salva su File, Mail e Messaggi. Non `ShareLink`, che non segnala quando ha finito;
+     - **macOS:** `fileMover`, cioè il pannello Salva, che sposta il file temporaneo dove sceglie l'utente.
 - **Avviso** prima dell'export (mostrato finché l'utente non sceglie "Non mostrare più"): "Il file contiene tutti i tuoi dati finanziari e non è protetto da password. Conservalo e invialo solo in modo sicuro."
 - Dopo l'export, il file temporaneo viene cancellato.
 
@@ -550,8 +551,9 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 
 1. Copia del file scelto in una cartella temporanea dell'app (con `startAccessingSecurityScopedResource` se serve).
 2. **Validazione** del file copiato, aperto in sola lettura:
-   - è un database SQLite valido e `PRAGMA integrity_check` restituisce `ok`;
+   - è un database SQLite valido, `PRAGMA integrity_check` restituisce `ok` e `foreign_key_check` non trova errori;
    - contiene le tabelle attese e `app_metadata`;
+   - il file non è attendibile: si rifiuta se contiene trigger o viste, che eseguirebbero codice del file, se a parità di versione lo schema è diverso da quello dell'app, o se una riga non è leggibile;
    - versione dello schema:
      - **uguale o precedente** → accettato; le migrazioni si eseguono dopo l'import;
      - **più recente** di quella dell'app → rifiutato con il messaggio "Questo file è stato creato da una versione più recente dell'app. Aggiorna l'app e riprova."
@@ -584,6 +586,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 - Impostazioni › Dati › **Esporta CSV**, per l'uso in Excel o Numbers.
 - Campi: `data;tipo;importo;valuta;categoria;conto;nota`, separatore `;`, UTF-8 con BOM, importi con la virgola decimale.
 - Non è reimportabile: per spostare i dati tra dispositivi si usa il file `.homefinances`.
+- Un testo che inizia con `=`, `+`, `-` o `@` viene preceduto da `'`, perché Excel lo eseguirebbe come formula.
 
 ### 10.6 Fuori scope v1
 

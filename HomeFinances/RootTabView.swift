@@ -10,6 +10,7 @@ import SwiftUI
 /// Navigazione principale (§ 7): due tab e l'editor, presentato una sola volta da qui.
 struct RootTabView: View {
     let database: AppDatabase
+    let store: DatabaseStore
     let appLock: AppLock
     @Bindable var router: AppRouter
     @SceneStorage("selectedTab") private var storedTab = AppTab.home
@@ -21,7 +22,17 @@ struct RootTabView: View {
             Tab("Home", systemImage: "house", value: AppTab.home) {
                 NavigationStack(path: $router.homePath) {
                     HomeView(operations: database.operations, accounts: database.accounts)
-                        .toolbar { newOperationButton }
+                        .toolbar {
+                            #if os(iOS)
+                            // Su Mac le Impostazioni hanno una propria finestra, con ⌘, (§ 7.4).
+                            ToolbarItem(placement: .topBarLeading) {
+                                Button("Impostazioni", systemImage: "gearshape") {
+                                    router.isSettingsPresented = true
+                                }
+                            }
+                            #endif
+                            newOperationButton
+                        }
                 }
             }
             Tab("Storico", systemImage: "list.bullet.rectangle", value: AppTab.history) {
@@ -50,6 +61,7 @@ struct RootTabView: View {
             // L'overlay della radice non copre gli sheet (§ 9).
             .privacyCover(appLock.isPrivacyCovered)
         }
+        .modifier(DataTransferPresenter(database: database, store: store, appLock: appLock, router: router))
         .onAppear {
             router.selectedTab = storedTab
             router.historySegment = storedSegment

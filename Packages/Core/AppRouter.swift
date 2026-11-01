@@ -1,3 +1,4 @@
+import Foundation
 import Observation
 
 public enum AppTab: String, CaseIterable, Sendable {
@@ -27,6 +28,15 @@ public enum HistoryRoute: Hashable, Sendable {
     case year(Int)
 }
 
+/// Azioni sui dati chieste dalle Impostazioni o dal menu del Mac (§ 10). Le esegue la radice dell'app:
+/// un pannello non si può aprire mentre si sta chiudendo lo sheet delle Impostazioni.
+public enum TransferRequest: Equatable, Sendable {
+    case exportDatabase
+    case importDatabase
+    case exportCSV
+    case undoImport
+}
+
 /// Stato della navigazione. Ogni punto dell'app apre l'editor impostando `editor`:
 /// lo sheet è presentato una sola volta, dalla radice (§ 7.3).
 @MainActor
@@ -38,6 +48,12 @@ public final class AppRouter {
     public var homePath: [OperationID] = []
     public var historySegment: HistorySegment = .operations
     public var historyPath: [HistoryRoute] = []
+    public var isSettingsPresented = false
+    public var transferRequest: TransferRequest?
+    /// File `.homefinances` aperto dall'esterno: l'import parte solo dopo lo sblocco (§ 10.4).
+    public var pendingImportURL: URL?
+    /// Esito di un'azione sui dati, mostrato sopra tutto.
+    public var transferMessage: String?
 
     public init() {}
 
@@ -56,5 +72,15 @@ public final class AppRouter {
     /// così dopo lo sblocco l'utente ritrova la stessa posizione.
     public func dismissPresentations() {
         editor = nil
+        isSettingsPresented = false
+        transferRequest = nil
+    }
+
+    /// Dopo un import i dati sono altri: niente di ciò che era aperto ha più senso (§ 10.4).
+    public func resetNavigation() {
+        dismissPresentations()
+        selectedTab = .home
+        homePath = []
+        historyPath = []
     }
 }

@@ -9,6 +9,26 @@ public enum BiometryKind: Sendable, Equatable {
     case opticID
 }
 
+public extension BiometryKind {
+    var displayName: String {
+        switch self {
+        case .faceID: "Face ID"
+        case .touchID: "Touch ID"
+        case .opticID: "Optic ID"
+        case .unavailable: "Biometria"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .faceID: "faceid"
+        case .touchID: "touchid"
+        case .opticID: "opticid"
+        case .unavailable: "lock"
+        }
+    }
+}
+
 public enum BiometricTokenResult: Sendable, Equatable {
     case valid
     /// Il token non c'è più: il sistema lo cancella quando cambiano i volti o le impronte registrati.

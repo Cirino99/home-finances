@@ -1,7 +1,25 @@
 {
   "sourceLanguage" : "it",
   "strings" : {
+    "Annulla" : {
+
+    },
+    "App bloccata" : {
+
+    },
     "Blocca" : {
+
+    },
+    "Continua" : {
+
+    },
+    "Dati" : {
+
+    },
+    "Esporta database…" : {
+
+    },
+    "Esportare il database?" : {
 
     },
     "Home" : {
@@ -10,13 +28,34 @@
     "Home Finances" : {
 
     },
+    "Il file contiene tutti i tuoi dati finanziari e non è protetto da password. Conservalo e invialo solo in modo sicuro." : {
+
+    },
+    "Importa database…" : {
+
+    },
     "Impossibile aprire il database" : {
+
+    },
+    "Impostazioni" : {
+
+    },
+    "Impostazioni…" : {
+
+    },
+    "Non mostrare più" : {
 
     },
     "Nuova operazione" : {
 
     },
+    "OK" : {
+
+    },
     "Riprova" : {
+
+    },
+    "Sblocca Home Finances per vedere le impostazioni." : {
 
     },
     "Storico" : {
