@@ -51,7 +51,8 @@ struct DataTransferPresenter: ViewModifier {
                     appLock: appLock,
                     categories: database.categories,
                     accounts: database.accounts,
-                    hasBackup: store.hasBackup
+                    hasBackup: store.hasBackup,
+                    isIncludedInSystemBackup: store.systemBackupBinding
                 )
                 // Lo sheet è presentato da qui: non eredita l'ambiente impostato sul contenuto.
                 .environment(router)

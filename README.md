@@ -4,8 +4,9 @@
 
 > Documento base per lo sviluppo. Raccoglie le decisioni prese su piattaforme, stack, sicurezza, modello dati, navigazione e schermate.
 > Le voci marcate **[DA CONFERMARE]** sono proposte non ancora approvate.
-> Versione 1.13 — 1 novembre 2026
+> Versione 1.14 — 1 novembre 2026
 > **Modifiche:**
+> - 1.14 — decise: PIN dimenticato con dati presenti non recuperabile; backup di sistema a scelta dell'utente, inclusi di default (§ 5.5).
 > - 1.13 — Sprint 7: VoiceOver e Dynamic Type, testi fissi localizzabili, scorciatoie ⌘F, ⌘1/⌘2 e ⌘N anche su iPad. Niente UI test automatici: quei percorsi si provano a mano (§ 11). La traduzione in inglese richiede ancora un passaggio (§ 9).
 > - 1.12 — file di export protetto da password (§ 10.2, § 10.3, § 10.4), tolto dalle esclusioni della v1. Attenzione per la pubblicazione: l'app ora cifra dati dell'utente (§ 5.5).
 > - 1.11 — Sprint 6: Impostazioni, categorie, conti, export, import e CSV. Il file importato è trattato come non attendibile (§ 10.4). Condivisione con il foglio di sistema invece di `ShareLink`.
@@ -150,7 +151,7 @@ Pattern:
 
 - Il contatore e l'attesa sono salvati nel Keychain, così non si azzerano reinstallando o cancellando le preferenze.
 - L'attesa si misura col tempo dall'avvio del dispositivo, non con l'ora: cambiare data e ora non la accorcia. Dopo un riavvio ricomincia per intero.
-- **PIN dimenticato:** se il database non contiene dati, si può reimpostare il PIN dopo il codice del dispositivo. Serve perché su iPhone il Keychain sopravvive alla disinstallazione. Con dati presenti non c'è modo di reimpostarlo **[DA DECIDERE]**.
+- **PIN dimenticato:** se il database non contiene dati, si può reimpostare il PIN dopo il codice del dispositivo. Serve perché su iPhone il Keychain sopravvive alla disinstallazione. Con dati presenti non c'è modo di reimpostarlo: è una scelta, perché chi conosce il codice del dispositivo non deve poter entrare nell'app.
 - **Nessuna cancellazione automatica dei dati** dopo N tentativi in v1.
 - Il tentativo viene contato **prima** del calcolo dell'hash: chiudere l'app durante la verifica non lo annulla.
 
@@ -180,7 +181,7 @@ Il database resta aperto per tutta la sessione. Il blocco agisce sulla **UI**: f
 
 - **Posizione del file:** `Application Support/<bundle-id>/homefinances.sqlite`, con WAL attivo (`DatabasePool`).
 - **iOS/iPadOS:** classe Data Protection di default (`completeUntilFirstUserAuthentication`).
-- **Backup di sistema** (iCloud/Finder su iOS, Time Machine su Mac): il database **è incluso** **[DA CONFERMARE]**.
+- **Backup di sistema** (iCloud/Finder su iOS, Time Machine su Mac): il database è incluso di default, e l'utente può escluderlo nelle Impostazioni. L'esclusione vale per l'intera cartella del database, comprese le copie di sicurezza, e non tocca i backup già fatti. L'app non cifra i dati: la protezione dipende da quella dei backup.
 - **Ripristino su un nuovo dispositivo:**
   - l'hash del PIN è `ThisDeviceOnly` e quindi non viene ripristinato;
   - se l'app trova un database ma nessun PIN, chiede di autenticarsi con il codice del dispositivo (`.deviceOwnerAuthentication`), poi fa impostare un nuovo PIN.
@@ -477,7 +478,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 | Sezione | Voci |
 |---|---|
 | Sicurezza | Sblocco con Face ID/Touch ID (switch), Cambia PIN, Blocco automatico (solo Mac: 1/5/15/30 min) |
-| Dati | Gestisci categorie, Gestisci conti, Esporta database, Importa database, Annulla ultimo import, Esporta CSV (§ 10) |
+| Dati | Gestisci categorie, Gestisci conti, Esporta database, Importa database, Annulla ultimo import, Esporta CSV (§ 10), Includi nei backup di sistema (§ 5.5) |
 | Generale | Valuta (sempre in sola lettura in v1) |
 | Informazioni | Versione, privacy ("I tuoi dati non lasciano mai questo dispositivo") |
 
@@ -686,4 +687,4 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 | 4 | Multi-finestra su Mac | No in v1 |
 | 5 | ~~Ultime 3 operazioni in Home: assolute o del mese selezionato~~ | **Decisa:** assolute |
 | 6 | ~~Libreria di accesso dati~~ | **Decisa:** SQLite + GRDB diretto |
-| 7 | Database incluso nel backup di sistema | Sì: così i dati non si perdono cambiando dispositivo |
+| 7 | ~~Database incluso nel backup di sistema~~ | **Decisa:** a scelta dell'utente nelle Impostazioni, incluso di default |

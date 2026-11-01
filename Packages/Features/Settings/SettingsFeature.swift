@@ -8,6 +8,7 @@ public struct SettingsView: View {
     private let categories: any CategoryRepository
     private let accounts: any AccountRepository
     private let hasBackup: Bool
+    @Binding private var isIncludedInSystemBackup: Bool
     @State private var currency: String?
     @State private var biometricFailed = false
     @State private var isConfirmingUndo = false
@@ -21,12 +22,14 @@ public struct SettingsView: View {
         appLock: AppLock,
         categories: any CategoryRepository,
         accounts: any AccountRepository,
-        hasBackup: Bool
+        hasBackup: Bool,
+        isIncludedInSystemBackup: Binding<Bool>
     ) {
         self.appLock = appLock
         self.categories = categories
         self.accounts = accounts
         self.hasBackup = hasBackup
+        _isIncludedInSystemBackup = isIncludedInSystemBackup
     }
 
     public var body: some View {
@@ -34,6 +37,15 @@ public struct SettingsView: View {
             Form {
                 securitySection
                 dataSection
+                Section {
+                    Toggle("Includi nei backup di sistema", isOn: $isIncludedInSystemBackup)
+                } footer: {
+                    Text(
+                        isIncludedInSystemBackup
+                            ? "I dati finiscono nei backup di iCloud, del Mac e di Time Machine, così non si perdono cambiando dispositivo. L'app non li cifra: la protezione dipende da quella dei backup."
+                            : "I dati non finiscono nei prossimi backup: se perdi il dispositivo li perdi, salvo aver esportato un file. I backup già fatti non cambiano."
+                    )
+                }
                 Section("Generale") {
                     LabeledContent("Valuta", value: currency ?? "—")
                 }

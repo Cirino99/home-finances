@@ -420,6 +420,52 @@ final class DatabaseStoreTests {
         #expect(restarted.hasBackup)
     }
 
+    // MARK: Backup di sistema
+
+    /// `URL` tiene in cache gli attributi letti: senza svuotarla si rilegge il valore precedente.
+    func isExcluded(_ url: URL) throws -> Bool? {
+        var url = url
+        url.removeAllCachedResourceValues()
+        return try url.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup
+    }
+
+    @Test func includedInSystemBackupByDefault() async throws {
+        let store = try await makeStore("a")
+        #expect(store.isIncludedInSystemBackup)
+    }
+
+    @Test func excludesAndIncludesTheDatabaseFolder() async throws {
+        let store = try await makeStore("a")
+        let folder = databaseURL("a").deletingLastPathComponent()
+
+        try store.setIncludedInSystemBackup(false)
+        #expect(!store.isIncludedInSystemBackup)
+        #expect(try isExcluded(folder) == true)
+
+        try store.setIncludedInSystemBackup(true)
+        #expect(store.isIncludedInSystemBackup)
+        #expect(try isExcluded(folder) == false)
+    }
+
+    @Test func choiceSurvivesRestart() async throws {
+        let store = try await makeStore("a")
+        try store.setIncludedInSystemBackup(false)
+
+        let restarted = DatabaseStore(url: databaseURL("a"), deviceName: "Test")
+        #expect(!restarted.isIncludedInSystemBackup)
+    }
+
+    @Test func choiceSurvivesImport() async throws {
+        let source = try await makeStore("source", operations: 1)
+        let target = try await makeStore("target")
+        try target.setIncludedInSystemBackup(false)
+
+        _ = try await target.performImport(try await target.prepareImport(from: try await source.exportDatabase()))
+
+        let restarted = DatabaseStore(url: databaseURL("target"), deviceName: "Test")
+        #expect(!restarted.isIncludedInSystemBackup)
+    }
+
     // MARK: Apertura
 
     @Test func retriesAfterFailedOpen() async throws {

@@ -95,7 +95,8 @@ struct MacSettingsRoot: View {
                 appLock: appLock,
                 categories: database.categories,
                 accounts: database.accounts,
-                hasBackup: store.hasBackup
+                hasBackup: store.hasBackup,
+                isIncludedInSystemBackup: store.systemBackupBinding
             )
             .id(store.generation)
             .environment(router)
@@ -107,6 +108,16 @@ struct MacSettingsRoot: View {
             )
             .frame(minWidth: 480, minHeight: 320)
         }
+    }
+}
+
+extension DatabaseStore {
+    /// Per l'interruttore delle Impostazioni. Se non si può applicare, l'interruttore resta com'era.
+    var systemBackupBinding: Binding<Bool> {
+        Binding(
+            get: { self.isIncludedInSystemBackup },
+            set: { try? self.setIncludedInSystemBackup($0) }
+        )
     }
 }
 

@@ -26,6 +26,8 @@ public final class DatabaseStore: DataTransferring {
     /// Cambia a ogni sostituzione del database: l'interfaccia si ricostruisce da zero.
     public private(set) var generation = 0
     public private(set) var hasBackup = false
+    /// Se i dati finiscono nei backup di sistema: iCloud, Finder, Time Machine (§ 5.5).
+    public private(set) var isIncludedInSystemBackup = true
 
     private static let maxBackups = 3
 
@@ -57,6 +59,23 @@ public final class DatabaseStore: DataTransferring {
         // I file di dati non cifrati non devono sopravvivere a una chiusura inattesa dell'app.
         try? FileManager.default.removeItem(at: temporaryDirectory)
         hasBackup = !existingBackups().isEmpty
+        if let excluded = try? databaseDirectory?.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup {
+            isIncludedInSystemBackup = !excluded
+        }
+    }
+
+    /// La cartella e non il file: così vale anche per i file di appoggio di SQLite e per le copie
+    /// di sicurezza, e resta valida quando un import sostituisce il database.
+    public func setIncludedInSystemBackup(_ isIncluded: Bool) throws {
+        guard var directory = databaseDirectory else { throw DataTransferError.databaseUnavailable }
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = !isIncluded
+        try directory.setResourceValues(values)
+        isIncludedInSystemBackup = isIncluded
+    }
+
+    private var databaseDirectory: URL? {
+        url?.deletingLastPathComponent()
     }
 
     /// `Application Support/<bundle-id>/homefinances.sqlite`.
