@@ -1,6 +1,7 @@
 import Foundation
 
-/// Testi di date e mesi mostrati nelle schermate (§ 8.2).
+/// Testi di date e mesi mostrati nelle schermate (§ 8.2). Sempre nel calendario gregoriano,
+/// come le date delle operazioni: "ottobre 2026" deve corrispondere a `2026-10`.
 public enum DayFormat {
     /// "Oggi", "Ieri", oppure "12 ott"; con l'anno se diverso da quello di `today`.
     public static func relative(
@@ -9,6 +10,7 @@ public enum DayFormat {
         calendar: Calendar = .current,
         locale: Locale = .current
     ) -> String {
+        let calendar = calendar.gregorianEquivalent
         if day == today { return "Oggi" }
         guard let date = day.date(in: calendar), let todayDate = today.date(in: calendar) else {
             return day.string
@@ -31,6 +33,7 @@ public enum DayFormat {
         calendar: Calendar = .current,
         locale: Locale = .current
     ) -> String {
+        let calendar = calendar.gregorianEquivalent
         if day == today { return "Oggi" }
         guard let date = day.date(in: calendar), let todayDate = today.date(in: calendar) else {
             return day.string
@@ -53,6 +56,7 @@ public enum DayFormat {
         calendar: Calendar = .current,
         locale: Locale = .current
     ) -> String {
+        let calendar = calendar.gregorianEquivalent
         guard let date = month.firstDay.date(in: calendar) else { return month.string }
         return date.formatted(
             Date.FormatStyle(locale: locale, calendar: calendar, timeZone: calendar.timeZone).month(.abbreviated)
@@ -61,6 +65,7 @@ public enum DayFormat {
 
     /// Data per esteso, per il dettaglio di un'operazione (§ 8.4).
     public static func long(_ day: Day, calendar: Calendar = .current, locale: Locale = .current) -> String {
+        let calendar = calendar.gregorianEquivalent
         guard let date = day.date(in: calendar) else { return day.string }
         return date.formatted(
             Date.FormatStyle(date: .long, time: .omitted, locale: locale, calendar: calendar, timeZone: calendar.timeZone)
@@ -73,6 +78,7 @@ public enum DayFormat {
         calendar: Calendar = .current,
         locale: Locale = .current
     ) -> String {
+        let calendar = calendar.gregorianEquivalent
         guard let date = month.firstDay.date(in: calendar) else { return month.string }
         let text = date.formatted(
             Date.FormatStyle(locale: locale, calendar: calendar, timeZone: calendar.timeZone)

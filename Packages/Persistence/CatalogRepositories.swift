@@ -96,7 +96,11 @@ struct GRDBAccountRepository: AccountRepository {
     }
 
     func setArchived(_ id: AccountID, isArchived: Bool) async throws {
-        try await setArchivedFlag(id, isArchived: isArchived, table: "account", database: database)
+        try await setArchivedFlag(id, isArchived: isArchived, table: "account", database: database) { db in
+            if isArchived {
+                try checkNotLastActiveAccount(id, in: db)
+            }
+        }
     }
 
     func reorder(_ ids: [AccountID]) async throws {
@@ -104,7 +108,9 @@ struct GRDBAccountRepository: AccountRepository {
     }
 
     func remove(_ id: AccountID) async throws -> RemovalOutcome {
-        try await removeRow(id, table: "account", foreignKey: "account_id", database: database)
+        try await removeRow(id, table: "account", foreignKey: "account_id", database: database) { db in
+            try checkNotLastActiveAccount(id, in: db)
+        }
     }
 
     func observeAccounts(includingArchived: Bool) -> AsyncThrowingStream<[Account], any Error> {
@@ -117,6 +123,23 @@ struct GRDBAccountRepository: AccountRepository {
 }
 
 // MARK: Operazioni comuni a conti e categorie
+
+/// Il conto `id` non può sparire se è l'ultimo attivo. Un conto già archiviato non conta.
+private func checkNotLastActiveAccount(_ id: AccountID, in db: Database) throws {
+    let isActive = try Row.fetchOne(
+        db,
+        sql: "SELECT 1 FROM account WHERE id = ? AND is_archived = 0",
+        arguments: [id.databaseValue]
+    ) != nil
+    let otherActive = try Int.fetchOne(
+        db,
+        sql: "SELECT COUNT(*) FROM account WHERE id != ? AND is_archived = 0",
+        arguments: [id.databaseValue]
+    ) ?? 0
+    if isActive, otherActive == 0 {
+        throw RepositoryError.lastActiveAccount
+    }
+}
 
 private func validName(_ name: String) throws -> String {
     let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -145,9 +168,11 @@ private func setArchivedFlag<Entity>(
     _ id: EntityID<Entity>,
     isArchived: Bool,
     table: String,
-    database: AppDatabase
+    database: AppDatabase,
+    check: @escaping @Sendable (Database) throws -> Void = { _ in }
 ) async throws {
     try await updateRow(database: database) { db, timestamp in
+        try check(db)
         try db.execute(
             sql: "UPDATE \(table) SET is_archived = ?, updated_at = ? WHERE id = ?",
             arguments: [isArchived, timestamp, id.databaseValue]
@@ -173,10 +198,12 @@ private func removeRow<Entity>(
     _ id: EntityID<Entity>,
     table: String,
     foreignKey: String,
-    database: AppDatabase
+    database: AppDatabase,
+    check: @escaping @Sendable (Database) throws -> Void = { _ in }
 ) async throws -> RemovalOutcome {
     let timestamp = Timestamp.string(database.now())
     return try await database.writer.write { db in
+        try check(db)
         let isUsed = try Row.fetchOne(
             db,
             sql: "SELECT 1 FROM operation WHERE \(foreignKey) = ? LIMIT 1",

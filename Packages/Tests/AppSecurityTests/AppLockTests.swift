@@ -9,9 +9,13 @@ struct AppLockTests {
     let clock = TestClock()
 
     func makeAppLock(hasExistingData: Bool = false) -> AppLock {
-        AppLock(store: store, authenticator: authenticator, hasExistingData: hasExistingData, pinIterations: 1) { [clock] in
-            clock.now
-        }
+        AppLock(
+            store: store,
+            authenticator: authenticator,
+            hasExistingData: { hasExistingData },
+            pinIterations: 1,
+            clock: clock.security
+        )
     }
 
     /// Onboarding completo, con o senza biometria.
@@ -100,10 +104,97 @@ struct AppLockTests {
         #expect(appLock.isBiometricUnlockEnabled)
     }
 
+    @Test func cancellingBiometricsWhileEnablingLeavesThemDisabled() async throws {
+        let appLock = makeAppLock()
+        try await appLock.setInitialPIN("123456")
+        authenticator.state.withLock { $0.succeeds = false }
+
+        await #expect(throws: AuthenticationFailed.self) {
+            try await appLock.enableBiometricUnlock()
+        }
+        #expect(!appLock.isBiometricUnlockEnabled)
+    }
+
+    @Test func disablingBiometricsRemovesTheToken() async throws {
+        let appLock = try await onboard(enableBiometrics: true)
+        try appLock.disableBiometricUnlock()
+        #expect(!appLock.isBiometricUnlockEnabled)
+        #expect(authenticator.state.withLock { $0.hasToken } == false)
+    }
+
+    // MARK: PIN dimenticato
+
+    @Test func forgottenPINCanBeResetWithoutData() async throws {
+        let appLock = try await onboard()
+        appLock.lock()
+        #expect(appLock.canResetForgottenPIN)
+
+        try await appLock.resetForgottenPIN()
+
+        #expect(authenticator.state.withLock { $0.deviceOwnerPrompts } == 1)
+        #expect(appLock.phase == .setup(.firstLaunch))
+        try await appLock.setInitialPIN("654321")
+        appLock.finishSetup()
+        appLock.lock()
+        #expect(await appLock.unlock(withPIN: "654321") == .success)
+    }
+
+    @Test func biometricsCannotBeEnabledWhileLockedAfterOnboarding() async throws {
+        let appLock = try await onboard()
+        appLock.lock()
+        await #expect(throws: AppLockError.invalidState) {
+            try await appLock.enableBiometricUnlock()
+        }
+    }
+
+    @Test func forgottenPINCannotBeResetWithData() async throws {
+        _ = try await onboard()
+        let appLock = makeAppLock(hasExistingData: true)
+        #expect(appLock.phase == .locked)
+        #expect(!appLock.canResetForgottenPIN)
+
+        await #expect(throws: AppLockError.invalidState) {
+            try await appLock.resetForgottenPIN()
+        }
+        #expect(authenticator.state.withLock { $0.deviceOwnerPrompts } == 0)
+        #expect(await appLock.unlock(withPIN: "123456") == .success)
+    }
+
+    @Test func forgottenPINResetRequiresDeviceOwner() async throws {
+        let appLock = try await onboard()
+        appLock.lock()
+        authenticator.state.withLock { $0.succeeds = false }
+
+        await #expect(throws: AuthenticationFailed.self) {
+            try await appLock.resetForgottenPIN()
+        }
+        #expect(appLock.phase == .locked)
+        authenticator.state.withLock { $0.succeeds = true }
+        #expect(await appLock.unlock(withPIN: "123456") == .success)
+    }
+
+    @Test func dataAppearingDuringTheSessionBlocksPINReset() async throws {
+        var hasData = false
+        let appLock = AppLock(
+            store: store,
+            authenticator: authenticator,
+            hasExistingData: { hasData },
+            pinIterations: 1,
+            clock: clock.security
+        )
+        try await appLock.setInitialPIN("123456")
+        appLock.finishSetup()
+
+        hasData = true
+        appLock.lock()
+
+        #expect(!appLock.canResetForgottenPIN)
+    }
+
     @Test func changedBiometryDisablesUnlockAndOffersReenable() async throws {
         let appLock = try await onboard(enableBiometrics: true)
         appLock.lock()
-        authenticator.state.withLock { $0.domainState = Data([9, 9, 9]) }
+        authenticator.changeEnrolledBiometrics()
 
         await appLock.unlockWithBiometrics()
         #expect(appLock.phase == .locked)

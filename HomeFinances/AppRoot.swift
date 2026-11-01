@@ -6,12 +6,29 @@ import SwiftUI
 
 /// Radice dell'app: blocco/sblocco e, una volta sbloccata, la navigazione principale.
 struct AppRoot: View {
-    let databaseState: DatabaseState
+    let database: DatabaseStore
     let appLock: AppLock
     let router: AppRouter
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        switch databaseState {
+        content
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active {
+                    retryDatabase()
+                }
+            }
+    }
+
+    private func retryDatabase() {
+        database.retryIfNeeded()
+        // Ora si può sapere se ci sono dati: può cambiare ciò che si deve chiedere.
+        appLock.reload()
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch database.state {
         case .ready(let database):
             LockGate(appLock: appLock) {
                 SeededContent(database: database, appLock: appLock, router: router)
@@ -26,6 +43,8 @@ struct AppRoot: View {
                 Label("Impossibile aprire il database", systemImage: "exclamationmark.triangle")
             } description: {
                 Text(error.localizedDescription)
+            } actions: {
+                Button("Riprova", action: retryDatabase)
             }
         }
     }

@@ -1,5 +1,6 @@
 import AppSecurity
 import Core
+import Observation
 import Persistence
 import SwiftUI
 #if os(iOS)
@@ -8,17 +9,18 @@ import UIKit
 
 @main
 struct HomeFinancesApp: App {
-    @State private var databaseState: DatabaseState
+    @State private var database: DatabaseStore
     @State private var appLock: AppLock
     @State private var router = AppRouter()
 
     init() {
-        let databaseState = DatabaseState.open()
-        _databaseState = State(initialValue: databaseState)
+        let database = DatabaseStore()
+        _database = State(initialValue: database)
+        let bundleID = Bundle.main.bundleIdentifier ?? "HomeFinances"
         _appLock = State(initialValue: AppLock(
-            store: KeychainStore(service: "\(Bundle.main.bundleIdentifier ?? "HomeFinances").security"),
-            authenticator: SystemBiometricAuthenticator(),
-            hasExistingData: databaseState.hasExistingData
+            store: KeychainStore(service: "\(bundleID).security"),
+            authenticator: SystemBiometricAuthenticator(service: "\(bundleID).security"),
+            hasExistingData: { database.state.hasExistingData }
         ))
     }
 
@@ -26,7 +28,7 @@ struct HomeFinancesApp: App {
         #if os(macOS)
         // Una sola finestra principale in v1 (§ 7.4).
         Window("Home Finances", id: "main") {
-            AppRoot(databaseState: databaseState, appLock: appLock, router: router)
+            AppRoot(database: database, appLock: appLock, router: router)
         }
         .commands {
             CommandGroup(replacing: .newItem) {
@@ -42,13 +44,31 @@ struct HomeFinancesApp: App {
         }
         #else
         WindowGroup {
-            AppRoot(databaseState: databaseState, appLock: appLock, router: router)
+            AppRoot(database: database, appLock: appLock, router: router)
         }
         #endif
     }
 }
 
-/// Esito dell'apertura del database all'avvio.
+/// Apre il database e, se l'apertura fallisce, permette di riprovare: subito dopo un riavvio
+/// iOS può avviare l'app quando il file non è ancora accessibile.
+@MainActor
+@Observable
+final class DatabaseStore {
+    private(set) var state: DatabaseState
+
+    init() {
+        state = DatabaseState.open()
+    }
+
+    func retryIfNeeded() {
+        if case .failed = state {
+            state = DatabaseState.open()
+        }
+    }
+}
+
+/// Esito dell'apertura del database.
 enum DatabaseState {
     case ready(AppDatabase)
     case failed(any Error)
@@ -64,12 +84,13 @@ enum DatabaseState {
         }
     }
 
-    /// Database con dati ma senza PIN significa ripristino da backup (§ 5.5). Se la lettura fallisce
-    /// si assume che i dati ci siano: chiedere il codice del dispositivo è il caso più prudente.
+    /// Database con dati ma senza PIN significa ripristino da backup (§ 5.5). Se il database non si può
+    /// leggere si assume che i dati ci siano: è il caso più prudente, chiede il codice del dispositivo
+    /// e non permette di reimpostare il PIN.
     var hasExistingData: Bool {
         switch self {
         case .ready(let database): (try? database.isSeeded()) ?? true
-        case .failed: false
+        case .failed: true
         }
     }
 

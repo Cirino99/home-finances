@@ -124,10 +124,45 @@ struct CatalogRepositoryTests {
     @Test func removingUsedAccountArchivesIt() async throws {
         let fixture = try await Fixture()
         try await fixture.addOperation(.expense, amount: 100, on: "2026-10-30")
+        let other = try await fixture.database.accounts.create(name: "Altro", currency: "EUR", initialBalance: 0)
 
         #expect(try await fixture.database.accounts.remove(fixture.account.id) == .archived)
         let visible = try #require(try await fixture.database.accounts.observeAccounts(includingArchived: false).firstValue())
-        #expect(visible.isEmpty)
+        #expect(visible.map(\.id) == [other.id])
+    }
+
+    @Test func lastActiveAccountCannotDisappear() async throws {
+        let fixture = try await Fixture()
+        let accounts = fixture.database.accounts
+
+        await #expect(throws: RepositoryError.lastActiveAccount) {
+            try await accounts.remove(fixture.account.id)
+        }
+        await #expect(throws: RepositoryError.lastActiveAccount) {
+            try await accounts.setArchived(fixture.account.id, isArchived: true)
+        }
+
+        let other = try await accounts.create(name: "Altro", currency: "EUR", initialBalance: 0)
+        try await accounts.setArchived(other.id, isArchived: true)
+        await #expect(throws: RepositoryError.lastActiveAccount) {
+            try await accounts.remove(fixture.account.id)
+        }
+
+        // Un conto già archiviato si può sempre togliere, e ripristinare non è mai un problema.
+        #expect(try await accounts.remove(other.id) == .deleted)
+        try await accounts.setArchived(fixture.account.id, isArchived: false)
+    }
+
+    @Test func seedDoesNotRepeatAfterAccountChanges() async throws {
+        let fixture = try await Fixture()
+        // Cancellare a mano l'unico conto non deve far ripartire i dati iniziali.
+        try fixture.execute("DELETE FROM account")
+
+        #expect(try fixture.database.isSeeded())
+        try await fixture.database.seedIfNeeded(currency: "USD")
+
+        let categories = try #require(try await fixture.database.categories.observeCategories(includingArchived: true).firstValue())
+        #expect(categories.count == DefaultData.categories.count, "Le categorie non si duplicano")
     }
 
     @Test func catalogWritesUpdateMetadata() async throws {
@@ -137,7 +172,8 @@ struct CatalogRepositoryTests {
         #expect(try fixture.database.metadata().lastModifiedAt == fixture.clock.now)
 
         fixture.clock.advance(by: 10)
-        try await fixture.database.accounts.setArchived(fixture.account.id, isArchived: true)
+        let other = try await fixture.database.accounts.create(name: "Altro", currency: "EUR", initialBalance: 0)
+        try await fixture.database.accounts.setArchived(other.id, isArchived: true)
         #expect(try fixture.database.metadata().lastModifiedAt == fixture.clock.now)
     }
 }

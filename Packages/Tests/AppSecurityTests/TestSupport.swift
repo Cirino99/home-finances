@@ -2,14 +2,40 @@ import Foundation
 import Synchronization
 @testable import AppSecurity
 
-/// Orologio controllato dai test.
+/// Orologio controllato dai test: ora mostrata e tempo dall'avvio si muovono separatamente.
 final class TestClock: Sendable {
-    private let current = Mutex(Date(timeIntervalSince1970: 1_800_000_000))
+    private struct State {
+        var date = Date(timeIntervalSince1970: 1_800_000_000)
+        var uptime: TimeInterval = 1000
+    }
 
-    var now: Date { current.withLock { $0 } }
+    private let state = Mutex(State())
 
+    var now: Date { state.withLock { $0.date } }
+
+    var security: SecurityClock {
+        SecurityClock(
+            now: { [self] in now },
+            uptime: { [self] in state.withLock { $0.uptime } }
+        )
+    }
+
+    /// Passa davvero il tempo.
     func advance(by seconds: TimeInterval) {
-        current.withLock { $0 += seconds }
+        state.withLock {
+            $0.date += seconds
+            $0.uptime += seconds
+        }
+    }
+
+    /// L'utente cambia data e ora nelle impostazioni.
+    func moveWallClock(by seconds: TimeInterval) {
+        state.withLock { $0.date += seconds }
+    }
+
+    /// Il dispositivo si riavvia: il tempo dall'avvio riparte da zero.
+    func reboot() {
+        state.withLock { $0.uptime = 0 }
     }
 }
 
@@ -19,7 +45,7 @@ struct AuthenticationFailed: Error {}
 final class FakeAuthenticator: BiometricAuthenticator {
     struct State {
         var biometry = BiometryKind.faceID
-        var domainState: Data? = Data([1, 2, 3])
+        var hasToken = false
         var succeeds = true
         var biometricPrompts = 0
         var deviceOwnerPrompts = 0
@@ -31,16 +57,28 @@ final class FakeAuthenticator: BiometricAuthenticator {
         state.withLock { $0.biometry }
     }
 
-    func currentDomainState() -> Data? {
-        state.withLock { $0.domainState }
+    func createUnlockToken() async throws {
+        state.withLock { $0.hasToken = true }
     }
 
-    func authenticateWithBiometrics(reason: String) async throws {
+    func readUnlockToken(reason: String) async throws -> BiometricTokenResult {
+        // Come il Keychain: senza il token non compare nessun prompt.
+        guard state.withLock({ $0.hasToken }) else { return .invalidated }
         let succeeds = state.withLock {
             $0.biometricPrompts += 1
             return $0.succeeds
         }
         if !succeeds { throw AuthenticationFailed() }
+        return .valid
+    }
+
+    func removeUnlockToken() throws {
+        state.withLock { $0.hasToken = false }
+    }
+
+    /// Il sistema cancella il token quando cambiano i volti o le impronte registrati.
+    func changeEnrolledBiometrics() {
+        state.withLock { $0.hasToken = false }
     }
 
     func authenticateDeviceOwner(reason: String) async throws {

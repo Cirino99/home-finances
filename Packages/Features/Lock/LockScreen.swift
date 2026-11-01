@@ -9,6 +9,8 @@ struct LockScreen: View {
     @State private var pin = ""
     @State private var failureCount = 0
     @State private var lastAttemptFailed = false
+    @State private var isConfirmingReset = false
+    @State private var resetFailed = false
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -46,9 +48,37 @@ struct LockScreen: View {
                         .accessibilityLabel("Usa \(appLock.biometry.displayName)")
                     }
                 }
+
+                if appLock.canResetForgottenPIN {
+                    Button("Hai dimenticato il PIN?") { isConfirmingReset = true }
+                        .buttonStyle(.borderless)
+                        .font(.callout)
+                }
             }
             .padding()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .confirmationDialog(
+            "Reimpostare il PIN?",
+            isPresented: $isConfirmingReset,
+            titleVisibility: .visible
+        ) {
+            Button("Continua") {
+                Task {
+                    do {
+                        try await appLock.resetForgottenPIN()
+                    } catch {
+                        resetFailed = true
+                    }
+                }
+            }
+        } message: {
+            Text("Questa app non contiene dati. Dopo aver confermato la tua identità potrai scegliere un nuovo PIN.")
+        }
+        .alert("PIN non reimpostato", isPresented: $resetFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Non è stato possibile confermare la tua identità.")
         }
         .task(id: scenePhase) {
             // Al ritorno in primo piano, non durante il passaggio in background.

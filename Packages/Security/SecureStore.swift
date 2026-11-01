@@ -19,8 +19,9 @@ public struct SecureStoreKey: RawRepresentable, Hashable, Sendable {
     static let pinCredential = SecureStoreKey(rawValue: "pin-credential")
     /// Contatore dei tentativi errati e fine dell'attesa: nel Keychain per sopravvivere alla reinstallazione.
     static let lockoutState = SecureStoreKey(rawValue: "lockout-state")
-    /// Stato delle biometrie registrate all'attivazione; la sua presenza significa "biometria attiva".
-    static let biometricDomainState = SecureStoreKey(rawValue: "biometric-domain-state")
+    /// La sua presenza significa "biometria attiva": distingue un token mai creato da uno invalidato dal sistema.
+    /// Il nome storico fa sì che chi aveva già attivato la biometria venga invitato a riattivarla.
+    static let biometricEnabled = SecureStoreKey(rawValue: "biometric-domain-state")
 }
 
 extension SecureStore {

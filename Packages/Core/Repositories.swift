@@ -6,6 +6,8 @@ public enum RepositoryError: Error, Equatable {
     /// Il tipo dell'operazione non coincide con quello della categoria (§ 6.2).
     case kindMismatch
     case nameEmpty
+    /// Serve sempre almeno un conto attivo su cui registrare le operazioni.
+    case lastActiveAccount
 }
 
 public protocol OperationRepository: Sendable {
@@ -45,10 +47,12 @@ public protocol AccountRepository: Sendable {
     @discardableResult
     func create(name: String, currency: String, initialBalance: Int64) async throws -> Account
     func update(_ id: AccountID, name: String, initialBalance: Int64) async throws
+    /// Lancia `lastActiveAccount` se si archivia l'ultimo conto attivo.
     func setArchived(_ id: AccountID, isArchived: Bool) async throws
     /// L'ordine dell'array diventa `sort_order`.
     func reorder(_ ids: [AccountID]) async throws
     /// Cancella il conto, o lo archivia se ha operazioni collegate.
+    /// Lancia `lastActiveAccount` se è l'ultimo conto attivo.
     func remove(_ id: AccountID) async throws -> RemovalOutcome
 
     func observeAccounts(includingArchived: Bool) -> AsyncThrowingStream<[Account], any Error>

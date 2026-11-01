@@ -1,5 +1,16 @@
 import Foundation
 
+extension Calendar {
+    /// Stesso fuso orario, ma gregoriano: date e mesi dell'app sono sempre `YYYY-MM-DD` gregoriani,
+    /// anche su un dispositivo con calendario buddista, giapponese o ebraico (che ha 13 mesi).
+    var gregorianEquivalent: Calendar {
+        guard identifier != .gregorian else { return self }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        return calendar
+    }
+}
+
 /// Mese di calendario, senza fuso orario.
 public struct YearMonth: Hashable, Comparable, Sendable, Codable {
     public let year: Int
@@ -83,8 +94,13 @@ public struct Day: Hashable, Comparable, Sendable, Codable {
     }
 
     public init(containing date: Date, calendar: Calendar = .current) {
-        let components = calendar.dateComponents([.year, .month, .day], from: date)
-        self.init(uncheckedYear: components.year ?? 1, month: components.month ?? 1, day: components.day ?? 1)
+        let components = calendar.gregorianEquivalent.dateComponents([.year, .month, .day], from: date)
+        self.init(
+            // Limitato all'intervallo di `YearMonth`, anche per date estreme.
+            uncheckedYear: min(max(components.year ?? 1, 1), 9999),
+            month: components.month ?? 1,
+            day: components.day ?? 1
+        )
     }
 
     fileprivate init(uncheckedYear year: Int, month: Int, day: Int) {
@@ -104,7 +120,7 @@ public struct Day: Hashable, Comparable, Sendable, Codable {
 
     /// Mezzanotte di questo giorno nel calendario indicato, per mostrarlo o passarlo a un `DatePicker`.
     public func date(in calendar: Calendar = .current) -> Date? {
-        calendar.date(from: DateComponents(year: year, month: month, day: day))
+        calendar.gregorianEquivalent.date(from: DateComponents(year: year, month: month, day: day))
     }
 
     public static func < (lhs: Day, rhs: Day) -> Bool {

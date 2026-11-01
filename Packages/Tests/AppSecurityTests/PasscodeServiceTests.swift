@@ -7,7 +7,69 @@ struct PasscodeServiceTests {
     let clock = TestClock()
 
     func makeService(iterations: Int = 1) -> PasscodeService {
-        PasscodeService(store: store, iterations: iterations) { [clock] in clock.now }
+        PasscodeService(store: store, iterations: iterations, clock: clock.security)
+    }
+
+    /// Cinque tentativi errati: scatta l'attesa di 1 minuto.
+    func triggerFirstWait(_ service: PasscodeService) async throws {
+        try await service.setPIN("123456")
+        for _ in 1...5 {
+            _ = try await service.verify("000000")
+        }
+    }
+
+    @Test func movingTheClockForwardDoesNotShortenTheWait() async throws {
+        let service = makeService()
+        try await triggerFirstWait(service)
+
+        clock.moveWallClock(by: 24 * 60 * 60)
+        guard case .lockedOut = try await service.verify("123456") else {
+            Issue.record("L'attesa non deve finire spostando la data")
+            return
+        }
+
+        clock.advance(by: 60)
+        #expect(try await service.verify("123456") == .success)
+    }
+
+    @Test func movingTheClockBackDoesNotExtendTheWait() async throws {
+        let service = makeService()
+        try await triggerFirstWait(service)
+
+        clock.moveWallClock(by: -24 * 60 * 60)
+        clock.advance(by: 60)
+        #expect(try await service.verify("123456") == .success)
+    }
+
+    @Test func rebootRestartsTheWait() async throws {
+        let service = makeService()
+        try await triggerFirstWait(service)
+        clock.advance(by: 30)
+
+        clock.reboot()
+        guard case .lockedOut = try await service.verify("123456") else {
+            Issue.record("Riavviare non deve annullare l'attesa")
+            return
+        }
+
+        clock.advance(by: 59)
+        guard case .lockedOut = try await service.verify("123456") else {
+            Issue.record("Dopo un riavvio l'attesa ricomincia per intero")
+            return
+        }
+
+        clock.advance(by: 1)
+        #expect(try await service.verify("123456") == .success)
+    }
+
+    @Test func removingCredentialClearsPINAndAttempts() async throws {
+        let service = makeService()
+        try await triggerFirstWait(service)
+
+        try service.removeCredential()
+
+        #expect(try !service.hasPIN())
+        #expect(try service.lockoutState() == LockoutState())
     }
 
     @Test(arguments: ["12345", "1234567", "12a456", "12 456", "١٢٣٤٥٦", ""])

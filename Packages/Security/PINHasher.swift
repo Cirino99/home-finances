@@ -51,7 +51,7 @@ enum PINHasher {
         return difference == 0
     }
 
-    private static func randomBytes(count: Int) throws -> Data {
+    static func randomBytes(count: Int) throws -> Data {
         var bytes = [UInt8](repeating: 0, count: count)
         let status = SecRandomCopyBytes(kSecRandomDefault, count, &bytes)
         guard status == errSecSuccess else {

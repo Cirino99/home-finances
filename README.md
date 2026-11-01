@@ -4,8 +4,9 @@
 
 > Documento base per lo sviluppo. Raccoglie le decisioni prese su piattaforme, stack, sicurezza, modello dati, navigazione e schermate.
 > Le voci marcate **[DA CONFERMARE]** sono proposte non ancora approvate.
-> Versione 1.9 — 1 novembre 2026
+> Versione 1.10 — 1 novembre 2026
 > **Modifiche:**
+> - 1.10 — correzioni dalla revisione del codice: attese del PIN misurate senza l'ora modificabile, date sempre gregoriane, PIN reimpostabile se non ci sono dati, biometria legata a un token nel Keychain, ultimo conto attivo protetto, nuovo tentativo di apertura del database, manifest della privacy, colori con varianti chiare e scure.
 > - 1.9 — Sprint 5: Storico con Operazioni, Mesi, Anni, grafici, ricerca e filtri. Nelle split view il primo elemento di `historyPath` è la selezione.
 > - 1.8 — Sprint 4: Home e dettaglio operazione. Decisa la #5: le ultime 3 operazioni sono le più recenti in assoluto.
 > - 1.7 — il progetto punta all'ultima versione delle piattaforme: minimo iOS/iPadOS/macOS 27, Swift 6.4, GRDB 7.11. Niente più fallback per le versioni precedenti.
@@ -144,7 +145,9 @@ Pattern:
 | 7 | Attesa 15 minuti |
 | ≥ 8 | Attesa 1 ora per ogni tentativo |
 
-- Il contatore e il timestamp del blocco sono salvati nel Keychain, così non si azzerano reinstallando o cancellando le preferenze.
+- Il contatore e l'attesa sono salvati nel Keychain, così non si azzerano reinstallando o cancellando le preferenze.
+- L'attesa si misura col tempo dall'avvio del dispositivo, non con l'ora: cambiare data e ora non la accorcia. Dopo un riavvio ricomincia per intero.
+- **PIN dimenticato:** se il database non contiene dati, si può reimpostare il PIN dopo il codice del dispositivo. Serve perché su iPhone il Keychain sopravvive alla disinstallazione. Con dati presenti non c'è modo di reimpostarlo **[DA DECIDERE]**.
 - **Nessuna cancellazione automatica dei dati** dopo N tentativi in v1.
 - Il tentativo viene contato **prima** del calcolo dell'hash: chiudere l'app durante la verifica non lo annulla.
 
@@ -152,9 +155,8 @@ Pattern:
 
 - Opzionale. Si attiva dopo l'impostazione del PIN, con una proposta al primo avvio e un interruttore nelle Impostazioni.
 - Sblocco con `LAContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, ...)`.
-- **Cambio delle impronte o dei volti registrati:**
-  - all'attivazione si salva nel Keychain `LAContext.domainState.biometry.stateHash`;
-  - se al login il valore è diverso, la biometria viene disattivata e l'app chiede il PIN, poi propone di riattivarla.
+- Lo sblocco legge un token dal Keychain protetto con `.biometryCurrentSet`, invece di fidarsi del solo esito di `evaluatePolicy`: decide il Secure Enclave, e lo stesso meccanismo potrà custodire la chiave di cifratura (§ 5.6).
+- **Cambio delle impronte o dei volti registrati:** il sistema cancella il token; la biometria viene disattivata e l'app chiede il PIN, poi propone di riattivarla.
 - In Info.plist: `NSFaceIDUsageDescription` = "Usa Face ID per sbloccare i tuoi dati finanziari."
 
 ### 5.4 Ciclo di vita del blocco
@@ -206,7 +208,7 @@ Per aggiungere SQLCipher in seguito senza riscrivere nulla:
 - **ID:** UUID come `TEXT` su ogni tabella, stabili anche in vista di una futura sincronizzazione.
 - **Importi:** `INTEGER` in **unità minori** (centesimi), sempre positivi. Il segno dipende dal `kind`. Nell'app si usa `Decimal`. **Mai `Double`.** La scala è fissa a 100 per ogni valuta, coerente con il limite di 2 decimali dell'editor: valute con 3 decimali non sono rappresentabili in v1.
 - **Valuta:** codice ISO 4217 (`EUR`). **In v1 una sola valuta per tutta l'app**, scelta al primo avvio (default dalla `Locale`) **[DA CONFERMARE]**. Lo schema salva comunque la valuta per non precludere il multi-valuta.
-- **Data dell'operazione:** **data di calendario** `TEXT` `YYYY-MM-DD`, senza fuso orario, così un'operazione non cambia mese viaggiando.
+- **Data dell'operazione:** **data di calendario** gregoriana `TEXT` `YYYY-MM-DD`, senza fuso orario, così un'operazione non cambia mese viaggiando. Resta gregoriana anche se il dispositivo usa un altro calendario.
 - **Timestamp tecnici** (`created_at`, `updated_at`): `TEXT` ISO 8601 in UTC.
 - **Cancellazioni:** fisiche in v1. Le categorie si **archiviano** invece di essere cancellate, se hanno operazioni collegate.
 
@@ -263,6 +265,7 @@ CREATE TABLE app_metadata (
 --   database_id        UUID generato alla creazione del DB (identifica la "storia" dei dati)
 --   last_modified_at   ISO 8601 UTC, aggiornato a ogni scrittura su account/category/operation
 --   last_modified_by   nome del dispositivo che ha fatto l'ultima modifica
+--   seeded_at          ISO 8601 UTC, quando sono stati inseriti i dati iniziali
 ```
 
 - `last_modified_at` e `last_modified_by` sono aggiornati dal repository nella **stessa transazione** di ogni scrittura.

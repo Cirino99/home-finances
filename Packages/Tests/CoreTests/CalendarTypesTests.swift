@@ -43,6 +43,44 @@ struct CalendarTypesTests {
         #expect(earlier.yearMonth < later.yearMonth)
     }
 
+    /// Il dispositivo può usare un altro calendario: le date dell'app restano gregoriane.
+    @Test(arguments: [
+        Calendar.Identifier.buddhist, .japanese, .hebrew, .islamicCivil, .persian, .chinese,
+    ])
+    func alwaysUsesGregorianDates(identifier: Calendar.Identifier) throws {
+        var calendar = Calendar(identifier: identifier)
+        calendar.timeZone = try #require(TimeZone(identifier: "Europe/Rome"))
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = calendar.timeZone
+        let date = try #require(gregorian.date(from: DateComponents(year: 2026, month: 3, day: 15, hour: 12)))
+
+        let day = Day(containing: date, calendar: calendar)
+
+        #expect(day.string == "2026-03-15")
+        #expect(day.yearMonth == YearMonth(year: 2026, month: 3))
+        #expect(YearMonth(containing: date, calendar: calendar).string == "2026-03")
+        #expect(day.date(in: calendar) == gregorian.startOfDay(for: date))
+    }
+
+    /// Nel calendario ebraico Adar I è il mese 13, che non esiste nel gregoriano: non deve far crashare.
+    @Test func hebrewLeapMonthDoesNotCrash() throws {
+        var hebrew = Calendar(identifier: .hebrew)
+        hebrew.timeZone = try #require(TimeZone(identifier: "Europe/Rome"))
+        // Febbraio 2027 cade in un anno ebraico bisestile.
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = hebrew.timeZone
+        let date = try #require(gregorian.date(from: DateComponents(year: 2027, month: 2, day: 20, hour: 12)))
+
+        #expect(Day(containing: date, calendar: hebrew).yearMonth.string == "2027-02")
+    }
+
+    @Test func extremeYearsStayInRange() {
+        let farPast = Date(timeIntervalSinceReferenceDate: -100_000_000_000)
+        #expect(Day(containing: farPast).yearMonth.year >= 1)
+        let farFuture = Date(timeIntervalSinceReferenceDate: 1_000_000_000_000)
+        #expect(Day(containing: farFuture).yearMonth.year <= 9999)
+    }
+
     /// Lo stesso istante cade in mesi diversi a seconda del fuso: conta quello del dispositivo (§ 6.4).
     @Test func currentMonthDependsOnDeviceTimeZone() throws {
         let instant = Date(timeIntervalSince1970: 1_798_761_600) // 2027-01-01 00:00 UTC

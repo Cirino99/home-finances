@@ -66,6 +66,13 @@ struct DayFormatTests {
         #expect(DayFormat.shortMonth(month, calendar: calendar, locale: italian) == "ott")
     }
 
+    @Test func titlesStayGregorianOnOtherCalendars() throws {
+        var buddhist = Calendar(identifier: .buddhist)
+        buddhist.timeZone = calendar.timeZone
+        let month = try #require(YearMonth(year: 2026, month: 10))
+        #expect(DayFormat.monthTitle(month, calendar: buddhist, locale: italian) == "Ottobre 2026")
+    }
+
     @Test func monthTitleIsCapitalized() throws {
         let month = try #require(YearMonth(year: 2026, month: 10))
         #expect(DayFormat.monthTitle(month, calendar: calendar, locale: italian) == "Ottobre 2026")

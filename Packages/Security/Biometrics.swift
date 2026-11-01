@@ -1,5 +1,6 @@
 import Foundation
 import LocalAuthentication
+import Security
 
 public enum BiometryKind: Sendable, Equatable {
     case unavailable
@@ -8,20 +9,35 @@ public enum BiometryKind: Sendable, Equatable {
     case opticID
 }
 
+public enum BiometricTokenResult: Sendable, Equatable {
+    case valid
+    /// Il token non c'è più: il sistema lo cancella quando cambiano i volti o le impronte registrati.
+    case invalidated
+}
+
 /// Accesso a Face ID / Touch ID e al codice del dispositivo, astratto per i test.
+///
+/// Lo sblocco legge un token dal Keychain protetto dalla biometria, invece di fidarsi del solo esito di
+/// `evaluatePolicy`: è il Secure Enclave a decidere, e lo stesso meccanismo potrà custodire la chiave di cifratura.
 public protocol BiometricAuthenticator: Sendable {
     /// Biometria disponibile e configurata in questo momento.
     func availableBiometry() -> BiometryKind
-    /// Impronta delle biometrie registrate: cambia se si aggiungono o tolgono volti o impronte.
-    /// `nil` se la biometria non è utilizzabile adesso.
-    func currentDomainState() -> Data?
-    func authenticateWithBiometrics(reason: String) async throws
-    /// Biometria o codice del dispositivo: usato per il ripristino senza PIN (§ 5.5).
+    /// Crea il token legato alle biometrie registrate ora, sostituendo quello precedente.
+    func createUnlockToken() async throws
+    /// Chiede la biometria e legge il token. Lancia un errore se è annullata o non riconosciuta.
+    func readUnlockToken(reason: String) async throws -> BiometricTokenResult
+    func removeUnlockToken() throws
+    /// Biometria o codice del dispositivo: dimostra di essere il proprietario (§ 5.5).
     func authenticateDeviceOwner(reason: String) async throws
 }
 
 public struct SystemBiometricAuthenticator: BiometricAuthenticator {
-    public init() {}
+    private let service: String
+
+    /// `service`: gruppo delle voci nel Keychain.
+    public init(service: String) {
+        self.service = service
+    }
 
     public func availableBiometry() -> BiometryKind {
         let context = LAContext()
@@ -36,23 +52,72 @@ public struct SystemBiometricAuthenticator: BiometricAuthenticator {
         }
     }
 
-    public func currentDomainState() -> Data? {
-        let context = LAContext()
-        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil) else {
-            return nil
+    @concurrent
+    public func createUnlockToken() async throws {
+        var error: Unmanaged<CFError>?
+        guard let accessControl = SecAccessControlCreateWithFlags(
+            nil,
+            kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
+            .biometryCurrentSet,
+            &error
+        ) else {
+            if let error {
+                throw error.takeRetainedValue()
+            }
+            throw BiometricError.unavailable
         }
-        return context.domainState.biometry.stateHash
+
+        try removeUnlockToken()
+        var query = baseQuery
+        query[kSecAttrAccessControl as String] = accessControl
+        query[kSecValueData as String] = try PINHasher.randomBytes(count: 32)
+        let status = SecItemAdd(query as CFDictionary, nil)
+        guard status == errSecSuccess else { throw KeychainError(status: status) }
     }
 
-    public func authenticateWithBiometrics(reason: String) async throws {
+    /// `@concurrent` perché la lettura resta bloccata finché l'utente non risponde al prompt.
+    @concurrent
+    public func readUnlockToken(reason: String) async throws -> BiometricTokenResult {
         let context = LAContext()
+        context.localizedReason = reason
         context.localizedFallbackTitle = "Usa il PIN"
-        _ = try await context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason)
+
+        var query = baseQuery
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        query[kSecUseAuthenticationContext as String] = context
+
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        switch status {
+        case errSecSuccess:
+            return .valid
+        case errSecItemNotFound:
+            return .invalidated
+        default:
+            throw KeychainError(status: status)
+        }
+    }
+
+    public func removeUnlockToken() throws {
+        let status = SecItemDelete(baseQuery as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw KeychainError(status: status)
+        }
     }
 
     public func authenticateDeviceOwner(reason: String) async throws {
         let context = LAContext()
         _ = try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)
+    }
+
+    private var baseQuery: [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: "biometric-unlock-token",
+            kSecUseDataProtectionKeychain as String: true,
+        ]
     }
 }
 
@@ -74,30 +139,30 @@ struct BiometricLock: Sendable {
     let authenticator: any BiometricAuthenticator
 
     func isEnabled() throws -> Bool {
-        try store.data(for: .biometricDomainState) != nil
+        try store.data(for: .biometricEnabled) != nil
     }
 
-    /// Chiede la biometria e, se va a buon fine, memorizza lo stato delle biometrie registrate.
+    /// Crea il token e chiede subito la biometria: se l'utente annulla, resta tutto disattivato.
     func enable(reason: String) async throws {
-        try await authenticator.authenticateWithBiometrics(reason: reason)
-        guard let domainState = authenticator.currentDomainState() else {
+        try await authenticator.createUnlockToken()
+        guard try await authenticator.readUnlockToken(reason: reason) == .valid else {
             throw BiometricError.unavailable
         }
-        try store.set(domainState, for: .biometricDomainState)
+        try store.set(Data([1]), for: .biometricEnabled)
     }
 
     func disable() throws {
-        try store.remove(.biometricDomainState)
+        try authenticator.removeUnlockToken()
+        try store.remove(.biometricEnabled)
     }
 
     func unlock(reason: String) async throws -> BiometricUnlockResult {
-        guard let savedState = try store.data(for: .biometricDomainState) else { return .notEnabled }
-        guard let currentState = authenticator.currentDomainState() else { return .unavailable }
-        guard currentState == savedState else {
+        guard try isEnabled() else { return .notEnabled }
+        guard authenticator.availableBiometry() != .unavailable else { return .unavailable }
+        guard try await authenticator.readUnlockToken(reason: reason) == .valid else {
             try disable()
             return .biometryChanged
         }
-        try await authenticator.authenticateWithBiometrics(reason: reason)
         return .success
     }
 }

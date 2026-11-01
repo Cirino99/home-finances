@@ -81,8 +81,19 @@ public final class AppDatabase: Sendable {
     /// da un ripristino da backup senza PIN (§ 5.5).
     public func isSeeded() throws -> Bool {
         try writer.read { db in
-            try Row.fetchOne(db, sql: "SELECT 1 FROM account LIMIT 1") != nil
+            try Self.hasSeedData(db)
         }
+    }
+
+    /// Un dato apposito e non i conti, che l'utente può cambiare. Controlla anche i conti
+    /// per i database creati prima che esistesse questa chiave.
+    private static func hasSeedData(_ db: Database) throws -> Bool {
+        let hasKey = try Row.fetchOne(
+            db,
+            sql: "SELECT 1 FROM app_metadata WHERE key = ?",
+            arguments: [MetadataKey.seededAt]
+        ) != nil
+        return try hasKey || Row.fetchOne(db, sql: "SELECT 1 FROM account LIMIT 1") != nil
     }
 
     /// Inserisce il conto e le categorie di default (§ 6.2). Non fa nulla se ci sono già.
@@ -92,8 +103,12 @@ public final class AppDatabase: Sendable {
         }
         let timestamp = Timestamp.string(now())
         try await writer.write { [self] db in
-            guard try Row.fetchOne(db, sql: "SELECT 1 FROM account LIMIT 1") == nil else { return }
+            guard try !Self.hasSeedData(db) else { return }
 
+            try db.execute(
+                sql: "INSERT INTO app_metadata (key, value) VALUES (?, ?)",
+                arguments: [MetadataKey.seededAt, timestamp]
+            )
             try db.execute(
                 sql: """
                     INSERT INTO account (id, name, currency, created_at, updated_at)
@@ -245,6 +260,7 @@ enum MetadataKey {
     static let databaseID = "database_id"
     static let lastModifiedAt = "last_modified_at"
     static let lastModifiedBy = "last_modified_by"
+    static let seededAt = "seeded_at"
 }
 
 /// Timestamp tecnici: ISO 8601 in UTC (§ 6.1).
