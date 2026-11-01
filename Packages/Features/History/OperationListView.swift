@@ -126,7 +126,7 @@ struct OperationListView: View {
         .searchable(text: $model.searchText, prompt: "Nota o categoria")
         #else
         // Non `.searchable`: starebbe sopra il picker dei segmenti e lo sposterebbe a ogni cambio di segmento.
-        .safeAreaInset(edge: .top, spacing: 0) {
+        .safeAreaBar(edge: .top, spacing: 0) {
             HistorySearchField(text: $model.searchText)
         }
         .scrollDismissesKeyboard(.interactively)

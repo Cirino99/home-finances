@@ -196,17 +196,20 @@ private struct HistoryRoot: View {
                 YearsListView(repositories: repositories, selection: selection)
             }
         }
-        .safeAreaInset(edge: .top) {
-            Picker("Vista", selection: $router.historySegment) {
-                Text("Operazioni").tag(HistorySegment.operations)
-                Text("Mesi").tag(HistorySegment.months)
-                Text("Anni").tag(HistorySegment.years)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(.horizontal)
-            .padding(.bottom, 8)
+        #if os(iOS)
+        // Barra di sistema: il contenuto che scorre sotto viene sfocato, invece di leggersi attraverso i controlli.
+        .safeAreaBar(edge: .top) {
+            segmentPicker($router.historySegment)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
         }
+        #else
+        .safeAreaInset(edge: .top) {
+            segmentPicker($router.historySegment)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+        }
+        #endif
         .navigationTitle("Storico")
         .toolbar {
             // Azione, non sezione: sta nella toolbar e non nella tab bar (§ 7.2, Opzione A).
@@ -218,5 +221,15 @@ private struct HistoryRoot: View {
         .onChange(of: router.historySegment) {
             router.historyPath = []
         }
+    }
+
+    private func segmentPicker(_ selection: Binding<HistorySegment>) -> some View {
+        Picker("Vista", selection: selection) {
+            Text("Operazioni").tag(HistorySegment.operations)
+            Text("Mesi").tag(HistorySegment.months)
+            Text("Anni").tag(HistorySegment.years)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
     }
 }
