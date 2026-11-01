@@ -14,6 +14,13 @@ public enum EditorRequest: Hashable, Identifiable, Sendable {
     public var id: Self { self }
 }
 
+/// Segmenti dello Storico (§ 8.3).
+public enum HistorySegment: String, CaseIterable, Sendable {
+    case operations
+    case months
+    case years
+}
+
 public enum HistoryRoute: Hashable, Sendable {
     case operation(OperationID)
     case month(YearMonth)
@@ -29,6 +36,7 @@ public final class AppRouter {
     public var editor: EditorRequest?
     /// Dettagli aperti dalla Home (§ 8.2).
     public var homePath: [OperationID] = []
+    public var historySegment: HistorySegment = .operations
     public var historyPath: [HistoryRoute] = []
 
     public init() {}
@@ -40,6 +48,7 @@ public final class AppRouter {
     /// "Vedi tutte" in Home (§ 7.3).
     public func showAllOperations() {
         selectedTab = .history
+        historySegment = .operations
         historyPath = []
     }
 

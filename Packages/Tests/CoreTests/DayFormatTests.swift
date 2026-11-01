@@ -45,6 +45,27 @@ struct DayFormatTests {
         #expect(try relative("2026-10-31", today: "2026-10-30") == "31 ott")
     }
 
+    func sectionTitle(_ day: String, today: String) throws -> String {
+        DayFormat.sectionTitle(
+            try #require(Day(string: day)),
+            today: try #require(Day(string: today)),
+            calendar: calendar,
+            locale: italian
+        )
+    }
+
+    @Test func sectionTitles() throws {
+        #expect(try sectionTitle("2026-10-30", today: "2026-10-30") == "Oggi")
+        #expect(try sectionTitle("2026-10-29", today: "2026-10-30") == "Ieri")
+        #expect(try sectionTitle("2026-10-26", today: "2026-10-30") == "Lunedì 26 ottobre")
+        #expect(try sectionTitle("2025-10-26", today: "2026-10-30").contains("2025"))
+    }
+
+    @Test func shortMonthName() throws {
+        let month = try #require(YearMonth(year: 2026, month: 10))
+        #expect(DayFormat.shortMonth(month, calendar: calendar, locale: italian) == "ott")
+    }
+
     @Test func monthTitleIsCapitalized() throws {
         let month = try #require(YearMonth(year: 2026, month: 10))
         #expect(DayFormat.monthTitle(month, calendar: calendar, locale: italian) == "Ottobre 2026")

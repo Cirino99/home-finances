@@ -41,8 +41,10 @@ struct AppRouterTests {
     @Test func showAllOperationsGoesToHistoryRoot() throws {
         let router = AppRouter()
         router.historyPath = [.year(2026)]
+        router.historySegment = .years
         router.showAllOperations()
         #expect(router.selectedTab == .history)
+        #expect(router.historySegment == .operations)
         #expect(router.historyPath.isEmpty)
     }
 

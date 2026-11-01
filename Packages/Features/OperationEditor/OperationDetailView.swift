@@ -6,6 +6,7 @@ import SwiftUI
 public struct OperationDetailView: View {
     private let id: OperationID
     private let operations: any OperationRepository
+    private let onDeleted: (() -> Void)?
     @State private var item: OperationListItem?
     @State private var hasLoaded = false
     @State private var isConfirmingDelete = false
@@ -13,9 +14,12 @@ public struct OperationDetailView: View {
     @Environment(AppRouter.self) private var router
     @Environment(\.dismiss) private var dismiss
 
-    public init(id: OperationID, operations: any OperationRepository) {
+    /// `onDeleted` sostituisce il ritorno indietro, dove non basta: la colonna di dettaglio
+    /// di una split view non ha una schermata precedente.
+    public init(id: OperationID, operations: any OperationRepository, onDeleted: (() -> Void)? = nil) {
         self.id = id
         self.operations = operations
+        self.onDeleted = onDeleted
     }
 
     public var body: some View {
@@ -90,6 +94,7 @@ public struct OperationDetailView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
+                .listRowSeparator(.hidden)
             }
 
             Section {
@@ -113,7 +118,11 @@ public struct OperationDetailView: View {
         Task {
             do {
                 try await operations.delete(id)
-                dismiss()
+                if let onDeleted {
+                    onDeleted()
+                } else {
+                    dismiss()
+                }
             } catch {
                 deleteFailed = true
             }

@@ -13,6 +13,7 @@ struct RootTabView: View {
     let appLock: AppLock
     @Bindable var router: AppRouter
     @SceneStorage("selectedTab") private var storedTab = AppTab.home
+    @SceneStorage("historySegment") private var storedSegment = HistorySegment.operations
     @State private var savedCount = 0
 
     var body: some View {
@@ -24,10 +25,12 @@ struct RootTabView: View {
                 }
             }
             Tab("Storico", systemImage: "list.bullet.rectangle", value: AppTab.history) {
-                NavigationStack(path: $router.historyPath) {
-                    HistoryView()
-                        .toolbar { newOperationButton }
-                }
+                // Gestisce da sé stack e split view, a seconda dello spazio disponibile.
+                HistoryView(
+                    operations: database.operations,
+                    categories: database.categories,
+                    accounts: database.accounts
+                )
             }
         }
         .tabViewStyle(.sidebarAdaptable)
@@ -47,8 +50,12 @@ struct RootTabView: View {
             // L'overlay della radice non copre gli sheet (§ 9).
             .privacyCover(appLock.isPrivacyCovered)
         }
-        .onAppear { router.selectedTab = storedTab }
+        .onAppear {
+            router.selectedTab = storedTab
+            router.historySegment = storedSegment
+        }
         .onChange(of: router.selectedTab) { _, tab in storedTab = tab }
+        .onChange(of: router.historySegment) { _, segment in storedSegment = segment }
     }
 
     /// Azione, non sezione: sta nella toolbar e non nella tab bar (§ 7.2, Opzione A).

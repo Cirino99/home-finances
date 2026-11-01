@@ -4,8 +4,9 @@
 
 > Documento base per lo sviluppo. Raccoglie le decisioni prese su piattaforme, stack, sicurezza, modello dati, navigazione e schermate.
 > Le voci marcate **[DA CONFERMARE]** sono proposte non ancora approvate.
-> Versione 1.8 — 1 novembre 2026
+> Versione 1.9 — 1 novembre 2026
 > **Modifiche:**
+> - 1.9 — Sprint 5: Storico con Operazioni, Mesi, Anni, grafici, ricerca e filtri. Nelle split view il primo elemento di `historyPath` è la selezione.
 > - 1.8 — Sprint 4: Home e dettaglio operazione. Decisa la #5: le ultime 3 operazioni sono le più recenti in assoluto.
 > - 1.7 — il progetto punta all'ultima versione delle piattaforme: minimo iOS/iPadOS/macOS 27, Swift 6.4, GRDB 7.11. Niente più fallback per le versioni precedenti.
 > - 1.6 — decisa la #1: Opzione A per "Nuova operazione". `AppRouter` sta in `Core`, così le feature possono usarlo senza dipendere dall'app.
@@ -347,7 +348,7 @@ In entrambi i casi su Mac c'è la voce di menu **File › Nuova operazione** con
 - **"Vedi tutte"** in Home: `selectedTab = .history`, segmento Operazioni, `historyPath = []`.
 - **Storico:**
   - compatto (iPhone): `NavigationStack(path:)`;
-  - regolare (iPad/Mac): `NavigationSplitView`, con elenco nella colonna `content` e dettaglio nella colonna `detail`.
+  - regolare: su iPad `NavigationSplitView`, con l'elenco in una colonna e il dettaglio nella colonna `detail`; su Mac due colonne affiancate a mano, ridimensionabili, perché la split view annidata nella sidebar dell'app sposta il dettaglio. In entrambi i casi il primo elemento di `historyPath` è la riga selezionata. Su iPad il resto è lo stack del dettaglio; su Mac il dettaglio mostra direttamente l'ultimo elemento, con un tasto indietro.
 - **Stato ripristinabile:** tab selezionato e segmento dello Storico salvati con `@SceneStorage`. Al ritorno dal blocco l'utente ritrova la stessa posizione, ma il dettaglio viene ricaricato dal DB.
 
 ### 7.4 Adattamento per piattaforma
