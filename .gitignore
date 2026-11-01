@@ -5,3 +5,9 @@ DerivedData/
 .swiftpm/
 *.xcuserstate
 Config/Local.xcconfig
+
+# File con dati finanziari: export, CSV e database non devono mai finire nel repository.
+*.homefinances
+*.csv
+*.sqlite
+*.sqlite-*
