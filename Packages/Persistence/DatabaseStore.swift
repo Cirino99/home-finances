@@ -34,19 +34,23 @@ public final class DatabaseStore: DataTransferring {
     private let temporaryDirectory: URL
     private let now: () -> Date
     private let opener: (URL) throws -> AppDatabase
+    private let passwordIterations: UInt32
 
-    /// `opener` si può sostituire nei test, per simulare un errore durante la sostituzione.
-    public init(
+    /// `opener` e `passwordIterations` si possono sostituire nei test: per simulare un errore
+    /// durante la sostituzione, e per non calcolare ogni volta una chiave lenta.
+    init(
         url: URL?,
         deviceName: String,
         temporaryDirectory: URL = FileManager.default.temporaryDirectory.appending(path: "HomeFinancesTransfer"),
         now: @escaping () -> Date = { Date() },
+        passwordIterations: UInt32 = EncryptedDatabaseFile.defaultIterations,
         opener: ((URL) throws -> AppDatabase)? = nil
     ) {
         self.url = url
         self.deviceName = deviceName
         self.temporaryDirectory = temporaryDirectory
         self.now = now
+        self.passwordIterations = passwordIterations
         let opener = opener ?? { try AppDatabase.open(at: $0, deviceName: deviceName) }
         self.opener = opener
         state = Self.open(url: url, opener: opener)
@@ -84,11 +88,36 @@ public final class DatabaseStore: DataTransferring {
 
     // MARK: Export
 
-    public func exportDatabase() async throws -> URL {
+    public func exportDatabase(password: String? = nil) async throws -> URL {
         let database = try currentDatabase()
         let destination = try newTemporaryFolder().appending(path: exportFileName(extension: "homefinances", device: deviceName))
         try await database.exportCopy(to: destination)
+        if let password {
+            do {
+                try await Self.encryptFile(at: destination, password: password, iterations: passwordIterations)
+            } catch {
+                // Mai lasciare in giro la copia in chiaro.
+                removeTemporaryFile(destination)
+                throw error
+            }
+        }
         return destination
+    }
+
+    /// Sostituisce il file con la versione cifrata, senza passare da un file in chiaro con un altro nome.
+    @concurrent
+    private nonisolated static func encryptFile(at url: URL, password: String, iterations: UInt32) async throws {
+        let encrypted = try EncryptedDatabaseFile.encrypt(Data(contentsOf: url), password: password, iterations: iterations)
+        try encrypted.write(to: url, options: .atomic)
+    }
+
+    /// Lascia il file com'è se non è cifrato; altrimenti lo sostituisce con la versione decifrata.
+    @concurrent
+    private nonisolated static func decryptFileIfNeeded(at url: URL, password: String?) async throws {
+        let data = try Data(contentsOf: url)
+        guard EncryptedDatabaseFile.isEncrypted(data) else { return }
+        guard let password else { throw DataTransferError.passwordRequired }
+        try EncryptedDatabaseFile.decrypt(data, password: password).write(to: url, options: .atomic)
     }
 
     public func exportCSV() async throws -> URL {
@@ -129,7 +158,7 @@ public final class DatabaseStore: DataTransferring {
 
     // MARK: Import
 
-    public func prepareImport(from source: URL) async throws -> ImportPreview {
+    public func prepareImport(from source: URL, password: String? = nil) async throws -> ImportPreview {
         let database = try currentDatabase()
         let candidate = try newTemporaryFolder().appending(path: "import.homefinances")
 
@@ -141,6 +170,7 @@ public final class DatabaseStore: DataTransferring {
         }
         do {
             try FileManager.default.copyItem(at: source, to: candidate)
+            try await Self.decryptFileIfNeeded(at: candidate, password: password)
             let incoming = try await Self.validate(fileAt: candidate)
             return ImportPreview(fileURL: candidate, current: try await database.summary(), incoming: incoming)
         } catch {

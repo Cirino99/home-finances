@@ -21,12 +21,25 @@ struct DataTransferPresenter: ViewModifier {
         var id: URL { url }
     }
 
+    private struct PendingExport {
+        let password: String?
+    }
+
+    /// File protetto in attesa della password.
+    private struct PasswordPrompt {
+        let source: URL
+        let wasWrong: Bool
+    }
+
     let database: AppDatabase
     let store: DatabaseStore
     let appLock: AppLock
     @Bindable var router: AppRouter
-    @AppStorage("skipExportWarning") private var skipExportWarning = false
-    @State private var isShowingExportWarning = false
+    @State private var isShowingExportOptions = false
+    /// Scelta fatta nelle opzioni: l'export parte quando lo sheet si è chiuso.
+    @State private var pendingExport: PendingExport?
+    @State private var passwordPrompt: PasswordPrompt?
+    @State private var enteredPassword = ""
     @State private var isImporterPresented = false
     @State private var exportedFile: ExportedFile?
     @State private var preview: ImportPreview?
@@ -63,15 +76,33 @@ struct DataTransferPresenter: ViewModifier {
                     router.transferMessage = error.localizedDescription
                 }
             }
-            .alert("Esportare il database?", isPresented: $isShowingExportWarning) {
-                Button("Continua", action: exportDatabase)
-                Button("Non mostrare più") {
-                    skipExportWarning = true
-                    exportDatabase()
-                }
+            .sheet(isPresented: $isShowingExportOptions, onDismiss: startPendingExport) {
+                ExportOptionsView(
+                    onExport: { password in
+                        pendingExport = PendingExport(password: password)
+                        isShowingExportOptions = false
+                    },
+                    onCancel: { isShowingExportOptions = false }
+                )
+                .privacyCover(appLock.isPrivacyCovered)
+            }
+            .alert(
+                passwordPrompt?.wasWrong == true ? "Password errata" : "File protetto",
+                isPresented: Binding(
+                    get: { passwordPrompt != nil },
+                    set: { isPresented in
+                        if !isPresented {
+                            passwordPrompt = nil
+                            enteredPassword = ""
+                        }
+                    }
+                )
+            ) {
+                SecureField("Password", text: $enteredPassword)
+                Button("Importa") { submitPassword() }
                 Button("Annulla", role: .cancel) {}
             } message: {
-                Text("Il file contiene tutti i tuoi dati finanziari e non è protetto da password. Conservalo e invialo solo in modo sicuro.")
+                Text("Inserisci la password scelta quando il file è stato esportato.")
             }
             #if os(iOS)
             .sheet(item: $exportedFile, onDismiss: nil) { file in
@@ -117,11 +148,7 @@ struct DataTransferPresenter: ViewModifier {
         router.transferRequest = nil
         switch request {
         case .exportDatabase:
-            if skipExportWarning {
-                exportDatabase()
-            } else {
-                isShowingExportWarning = true
-            }
+            isShowingExportOptions = true
         case .importDatabase:
             isImporterPresented = true
         case .exportCSV:
@@ -137,16 +164,34 @@ struct DataTransferPresenter: ViewModifier {
         }
     }
 
-    private func exportDatabase() {
+    private func startPendingExport() {
+        guard let export = pendingExport else { return }
+        pendingExport = nil
         run {
-            exportedFile = ExportedFile(url: try await store.exportDatabase())
+            exportedFile = ExportedFile(url: try await store.exportDatabase(password: export.password))
         }
     }
 
-    private func prepareImport(from url: URL) {
-        run {
-            preview = try await store.prepareImport(from: url)
+    private func prepareImport(from url: URL, password: String? = nil) {
+        Task {
+            do {
+                preview = try await store.prepareImport(from: url, password: password)
+            } catch DataTransferError.passwordRequired {
+                passwordPrompt = PasswordPrompt(source: url, wasWrong: false)
+            } catch DataTransferError.wrongPassword {
+                passwordPrompt = PasswordPrompt(source: url, wasWrong: true)
+            } catch {
+                router.transferMessage = error.localizedDescription
+            }
         }
+    }
+
+    private func submitPassword() {
+        guard let prompt = passwordPrompt else { return }
+        let password = enteredPassword
+        enteredPassword = ""
+        passwordPrompt = nil
+        prepareImport(from: prompt.source, password: password)
     }
 
     private func performImport(_ preview: ImportPreview) {

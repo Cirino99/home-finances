@@ -10,16 +10,13 @@
     "Blocca" : {
 
     },
-    "Continua" : {
-
-    },
     "Dati" : {
 
     },
     "Esporta database…" : {
 
     },
-    "Esportare il database?" : {
+    "File protetto" : {
 
     },
     "Home" : {
@@ -28,7 +25,7 @@
     "Home Finances" : {
 
     },
-    "Il file contiene tutti i tuoi dati finanziari e non è protetto da password. Conservalo e invialo solo in modo sicuro." : {
+    "Importa" : {
 
     },
     "Importa database…" : {
@@ -43,13 +40,19 @@
     "Impostazioni…" : {
 
     },
-    "Non mostrare più" : {
+    "Inserisci la password scelta quando il file è stato esportato." : {
 
     },
     "Nuova operazione" : {
 
     },
     "OK" : {
+
+    },
+    "Password" : {
+
+    },
+    "Password errata" : {
 
     },
     "Riprova" : {

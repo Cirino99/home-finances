@@ -11,9 +11,14 @@ public enum DataTransferError: Error, Equatable, LocalizedError {
     case newerSchema
     case databaseUnavailable
     case noBackup
+    /// Il file è protetto: serve la password.
+    case passwordRequired
+    case wrongPassword
 
     public var errorDescription: String? {
         switch self {
+        case .passwordRequired: "Questo file è protetto da password."
+        case .wrongPassword: "Password errata, oppure il file è stato modificato."
         case .notADatabase: "Questo file non è un database di Home Finances."
         case .integrityCheckFailed: "Il file è danneggiato."
         case .missingTables: "Il file non contiene i dati di Home Finances."
@@ -81,13 +86,15 @@ public struct ImportPreview: Identifiable, Equatable, Sendable {
 @MainActor
 public protocol DataTransferring: AnyObject {
     var hasBackup: Bool { get }
-    /// Crea una copia temporanea del database. Va eliminata con `removeTemporaryFile`.
-    func exportDatabase() async throws -> URL
+    /// Crea una copia temporanea del database, cifrata se c'è una password.
+    /// Va eliminata con `removeTemporaryFile`.
+    func exportDatabase(password: String?) async throws -> URL
     /// Crea un CSV temporaneo. Va eliminato con `removeTemporaryFile`.
     func exportCSV() async throws -> URL
     func removeTemporaryFile(_ url: URL)
-    /// Copia e controlla il file scelto, senza toccare i dati.
-    func prepareImport(from source: URL) async throws -> ImportPreview
+    /// Copia e controlla il file scelto, senza toccare i dati. Se è protetto e manca la password
+    /// lancia `DataTransferError.passwordRequired`; se è sbagliata, `.wrongPassword`.
+    func prepareImport(from source: URL, password: String?) async throws -> ImportPreview
     func cancelImport(_ preview: ImportPreview)
     /// Sostituisce il database. Restituisce il numero di operazioni importate.
     func performImport(_ preview: ImportPreview) async throws -> Int

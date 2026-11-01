@@ -28,6 +28,7 @@ final class DatabaseStoreTests {
             url: databaseURL(name),
             deviceName: "Test",
             temporaryDirectory: root.appending(path: "tmp-\(name)"),
+            passwordIterations: 1000,
             opener: opener
         )
         let database = try currentDatabase(of: store)
@@ -191,6 +192,70 @@ final class DatabaseStoreTests {
 
         try await add(to: try currentDatabase(of: target), day: 15)
         #expect(try await count(in: target) == 2)
+    }
+
+    // MARK: Protezione con password
+
+    @Test func protectedExportContainsNoReadableData() async throws {
+        let store = try await makeStore("source", operations: 1)
+        let exported = try await store.exportDatabase(password: "una password lunga")
+        let data = try Data(contentsOf: exported)
+
+        #expect(EncryptedDatabaseFile.isEncrypted(data))
+        #expect(data.range(of: Data("SQLite format 3".utf8)) == nil)
+        #expect(data.range(of: Data(DefaultData.accountName.utf8)) == nil)
+        #expect(throws: DataTransferError.notADatabase) {
+            _ = try DatabaseInspector.validate(fileAt: exported)
+        }
+        let folder = try FileManager.default.contentsOfDirectory(atPath: exported.deletingLastPathComponent().path)
+        #expect(folder == [exported.lastPathComponent], "Nessuna copia in chiaro")
+    }
+
+    @Test func protectedFileImportsWithRightPassword() async throws {
+        let source = try await makeStore("source", operations: 3)
+        let target = try await makeStore("target", operations: 1)
+        let exported = try await source.exportDatabase(password: "una password lunga")
+
+        let preview = try await target.prepareImport(from: exported, password: "una password lunga")
+        #expect(preview.incoming.operationCount == 3)
+        #expect(try await target.performImport(preview) == 3)
+        #expect(try await count(in: target) == 3)
+    }
+
+    @Test func protectedFileAsksForPassword() async throws {
+        let source = try await makeStore("source", operations: 1)
+        let target = try await makeStore("target", operations: 1)
+        let exported = try await source.exportDatabase(password: "una password lunga")
+
+        await #expect(throws: DataTransferError.passwordRequired) {
+            _ = try await target.prepareImport(from: exported)
+        }
+        await #expect(throws: DataTransferError.wrongPassword) {
+            _ = try await target.prepareImport(from: exported, password: "sbagliata")
+        }
+        #expect(try await count(in: target) == 1)
+    }
+
+    @Test func passwordIsIgnoredOnUnprotectedFile() async throws {
+        let source = try await makeStore("source", operations: 1)
+        let target = try await makeStore("target")
+        let exported = try await source.exportDatabase()
+
+        let preview = try await target.prepareImport(from: exported, password: "qualsiasi")
+        #expect(preview.incoming.operationCount == 1)
+    }
+
+    /// Dopo la decifratura valgono gli stessi controlli: una password giusta non rende affidabile il file.
+    @Test func protectedFileStillGoesThroughValidation() async throws {
+        let file = try await tamperedExport { db in
+            try db.execute(sql: "CREATE VIEW altra AS SELECT * FROM operation")
+        }
+        let encrypted = try EncryptedDatabaseFile.encrypt(Data(contentsOf: file), password: "password", iterations: 1000)
+        let target = try await makeStore("target", operations: 1)
+
+        await #expect(throws: DataTransferError.unexpectedContent) {
+            _ = try await target.prepareImport(from: try writeFile(encrypted), password: "password")
+        }
     }
 
     // MARK: Import rifiutato

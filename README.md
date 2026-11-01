@@ -4,8 +4,9 @@
 
 > Documento base per lo sviluppo. Raccoglie le decisioni prese su piattaforme, stack, sicurezza, modello dati, navigazione e schermate.
 > Le voci marcate **[DA CONFERMARE]** sono proposte non ancora approvate.
-> Versione 1.11 — 1 novembre 2026
+> Versione 1.12 — 1 novembre 2026
 > **Modifiche:**
+> - 1.12 — file di export protetto da password (§ 10.2, § 10.3, § 10.4), tolto dalle esclusioni della v1. Attenzione per la pubblicazione: l'app ora cifra dati dell'utente (§ 5.5).
 > - 1.11 — Sprint 6: Impostazioni, categorie, conti, export, import e CSV. Il file importato è trattato come non attendibile (§ 10.4). Condivisione con il foglio di sistema invece di `ShareLink`.
 > - 1.10 — correzioni dalla revisione del codice: attese del PIN misurate senza l'ora modificabile, date sempre gregoriane, PIN reimpostabile se non ci sono dati, biometria legata a un token nel Keychain, ultimo conto attivo protetto, nuovo tentativo di apertura del database, manifest della privacy, colori con varianti chiare e scure.
 > - 1.9 — Sprint 5: Storico con Operazioni, Mesi, Anni, grafici, ricerca e filtri. Nelle split view il primo elemento di `historyPath` è la selezione.
@@ -182,7 +183,7 @@ Il database resta aperto per tutta la sessione. Il blocco agisce sulla **UI**: f
 - **Ripristino su un nuovo dispositivo:**
   - l'hash del PIN è `ThisDeviceOnly` e quindi non viene ripristinato;
   - se l'app trova un database ma nessun PIN, chiede di autenticarsi con il codice del dispositivo (`.deviceOwnerAuthentication`), poi fa impostare un nuovo PIN.
-- **Export compliance App Store:** senza SQLCipher l'app usa crittografia solo per l'hash del PIN. Con ogni probabilità `ITSAppUsesNonExemptEncryption = NO`, da verificare al momento della pubblicazione.
+- **Export compliance App Store:** l'app usa crittografia per l'hash del PIN e per cifrare i file di export con password (AES-GCM di CryptoKit). `ITSAppUsesNonExemptEncryption` è impostato a `NO`, ma con la cifratura dei file **va ricontrollato al momento della pubblicazione**, secondo le regole di Apple sull'esportazione.
 
 ### 5.6 Predisposizione per la cifratura futura
 
@@ -516,7 +517,12 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 
 ### 10.2 Formato del file
 
-- **Estensione:** `.homefinances`. È un file SQLite standard, apribile con qualsiasi strumento SQLite.
+- **Estensione:** `.homefinances`. Senza password è un file SQLite standard, apribile con qualsiasi strumento SQLite.
+- **Con password:** `magic HFENCDB1 (8 byte) | iterazioni (4) | salt (16) | nonce + dati cifrati + tag`.
+  - AES-256-GCM (CryptoKit), con l'intestazione autenticata: un file manomesso non si apre;
+  - chiave derivata con PBKDF2-HMAC-SHA256, 1.000.000 di iterazioni, salt casuale;
+  - le iterazioni le dichiara il file, che non è attendibile: oltre 10.000.000 viene rifiutato;
+  - la password viene normalizzata in forma Unicode canonica, così funziona uguale su dispositivi diversi.
 - **Tipo di file (UTType):**
   - dichiarato come **Exported Type** in Info.plist, per esempio `it.<nomesviluppatore>.homefinances.database`;
   - conforme a `public.database` e `public.data`.
@@ -536,7 +542,8 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
   3. consegna all'utente:
      - **iOS/iPadOS:** foglio di condivisione di sistema, che include AirDrop, Salva su File, Mail e Messaggi. Non `ShareLink`, che non segnala quando ha finito;
      - **macOS:** `fileMover`, cioè il pannello Salva, che sposta il file temporaneo dove sceglie l'utente.
-- **Avviso** prima dell'export (mostrato finché l'utente non sceglie "Non mostrare più"): "Il file contiene tutti i tuoi dati finanziari e non è protetto da password. Conservalo e invialo solo in modo sicuro."
+- **Opzioni** prima dell'export: "Proteggi con password", attiva di default. Password di almeno 8 caratteri, con conferma. Non è recuperabile: se viene dimenticata, il file non si apre più.
+- **Avviso** se si disattiva la protezione: "Il file contiene tutti i tuoi dati finanziari e non è protetto da password. Conservalo e invialo solo in modo sicuro."
 - Dopo l'export, il file temporaneo viene cancellato.
 
 ### 10.4 Import
@@ -549,7 +556,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 
 **Procedura:**
 
-1. Copia del file scelto in una cartella temporanea dell'app (con `startAccessingSecurityScopedResource` se serve).
+1. Copia del file scelto in una cartella temporanea dell'app (con `startAccessingSecurityScopedResource` se serve). Se il file è protetto si chiede la password e lo si decifra; con una password errata si può riprovare.
 2. **Validazione** del file copiato, aperto in sola lettura:
    - è un database SQLite valido, `PRAGMA integrity_check` restituisce `ok` e `foreign_key_check` non trova errori;
    - contiene le tabelle attese e `app_metadata`;
@@ -592,7 +599,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 
 - Unione (merge) di due database. Gli UUID e `updated_at` su ogni riga la rendono possibile in futuro.
 - Import da CSV o estratti conto bancari.
-- File di export protetto da password.
+- Protezione con password del CSV e delle copie di sicurezza interne.
 
 ---
 
