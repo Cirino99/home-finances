@@ -48,7 +48,7 @@ let package = Package(
 
         // Le feature dipendono da Core, DesignSystem e dai protocolli dei repository, mai da GRDB.
         .target(name: "LockFeature", dependencies: ["Core", "DesignSystem", "AppSecurity"], path: "Features/Lock"),
-        .target(name: "HomeFeature", dependencies: ["Core", "DesignSystem"], path: "Features/Home"),
+        .target(name: "HomeFeature", dependencies: ["Core", "DesignSystem", "OperationEditorFeature"], path: "Features/Home"),
         .target(name: "HistoryFeature", dependencies: ["Core", "DesignSystem"], path: "Features/History"),
         .target(name: "OperationEditorFeature", dependencies: ["Core", "DesignSystem"], path: "Features/OperationEditor"),
         .target(name: "SettingsFeature", dependencies: ["Core", "DesignSystem", "AppSecurity"], path: "Features/Settings"),
@@ -60,6 +60,11 @@ let package = Package(
             name: "OperationEditorFeatureTests",
             dependencies: ["Core", "OperationEditorFeature", "Persistence"],
             path: "Tests/OperationEditorFeatureTests"
+        ),
+        .testTarget(
+            name: "HomeFeatureTests",
+            dependencies: ["Core", "HomeFeature", "Persistence"],
+            path: "Tests/HomeFeatureTests"
         ),
     ]
 )

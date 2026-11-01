@@ -20,6 +20,13 @@ public extension CategoryColor {
     }
 }
 
+public extension OperationKind {
+    /// Colore degli importi. Mai da solo: il segno è sempre presente (§ 9).
+    var color: Color {
+        self == .income ? .income : .expense
+    }
+}
+
 /// Icona di una categoria su sfondo del suo colore.
 public struct CategoryIcon: View {
     private let symbol: String
@@ -40,12 +47,15 @@ public struct CategoryIcon: View {
     }
 }
 
-/// Riga di un'operazione negli elenchi (§ 8.2). Il segno è sempre presente: il colore non è mai l'unico indicatore.
+/// Riga di un'operazione negli elenchi (§ 8.2).
 public struct OperationRow: View {
     private let item: OperationListItem
+    private let today: Day
 
-    public init(item: OperationListItem) {
+    /// `today` per la data relativa: "Oggi", "Ieri", "12 ott".
+    public init(item: OperationListItem, today: Day) {
         self.item = item
+        self.today = today
     }
 
     public var body: some View {
@@ -63,24 +73,18 @@ public struct OperationRow: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                Text(amountText)
-                    .monospacedDigit()
-                    .foregroundStyle(item.operation.kind == .income ? Color.income : Color.expense)
-                if let date = item.operation.date.date() {
-                    Text(date, format: .dateTime.day().month())
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
+                Text(MoneyFormat.string(
+                    amount: item.operation.amount,
+                    kind: item.operation.kind,
+                    currency: item.operation.currency
+                ))
+                .monospacedDigit()
+                .foregroundStyle(item.operation.kind.color)
+                Text(DayFormat.relative(item.operation.date, today: today))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
         }
         .accessibilityElement(children: .combine)
-    }
-
-    private var amountText: String {
-        MoneyFormat.string(
-            amount: item.operation.amount,
-            kind: item.operation.kind,
-            currency: item.operation.currency
-        )
     }
 }

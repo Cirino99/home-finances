@@ -18,8 +18,8 @@ struct RootTabView: View {
     var body: some View {
         TabView(selection: $router.selectedTab) {
             Tab("Home", systemImage: "house", value: AppTab.home) {
-                NavigationStack {
-                    HomeView(operations: database.operations)
+                NavigationStack(path: $router.homePath) {
+                    HomeView(operations: database.operations, accounts: database.accounts)
                         .toolbar { newOperationButton }
                 }
             }
@@ -31,7 +31,6 @@ struct RootTabView: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
-        .newOperationAccessory { router.newOperation() }
         .environment(router)
         .sensoryFeedback(.success, trigger: savedCount)
         .sheet(item: $router.editor) { request in
@@ -57,19 +56,5 @@ struct RootTabView: View {
         ToolbarItem(placement: .primaryAction) {
             Button("Nuova operazione", systemImage: "plus") { router.newOperation() }
         }
-    }
-}
-
-private extension View {
-    /// Su iOS/iPadOS: pulsante sopra la tab bar, sempre a portata di pollice (§ 7.2).
-    @ViewBuilder
-    func newOperationAccessory(action: @escaping () -> Void) -> some View {
-        #if os(iOS)
-        tabViewBottomAccessory {
-            Button("Nuova operazione", systemImage: "plus", action: action)
-        }
-        #else
-        self
-        #endif
     }
 }

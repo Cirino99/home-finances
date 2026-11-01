@@ -27,6 +27,8 @@ public enum HistoryRoute: Hashable, Sendable {
 public final class AppRouter {
     public var selectedTab: AppTab = .home
     public var editor: EditorRequest?
+    /// Dettagli aperti dalla Home (§ 8.2).
+    public var homePath: [OperationID] = []
     public var historyPath: [HistoryRoute] = []
 
     public init() {}

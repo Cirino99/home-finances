@@ -4,8 +4,9 @@
 
 > Documento base per lo sviluppo. Raccoglie le decisioni prese su piattaforme, stack, sicurezza, modello dati, navigazione e schermate.
 > Le voci marcate **[DA CONFERMARE]** sono proposte non ancora approvate.
-> Versione 1.7 — 1 novembre 2026
+> Versione 1.8 — 1 novembre 2026
 > **Modifiche:**
+> - 1.8 — Sprint 4: Home e dettaglio operazione. Decisa la #5: le ultime 3 operazioni sono le più recenti in assoluto.
 > - 1.7 — il progetto punta all'ultima versione delle piattaforme: minimo iOS/iPadOS/macOS 27, Swift 6.4, GRDB 7.11. Niente più fallback per le versioni precedenti.
 > - 1.6 — decisa la #1: Opzione A per "Nuova operazione". `AppRouter` sta in `Core`, così le feature possono usarlo senza dipendere dall'app.
 > - 1.5 — Sprint 2: i protocolli dei repository stanno in `Core`. La valuta si sceglie dopo il primo sblocco, finché il database non ha i dati iniziali. Importi: scala fissa a 100 per ogni valuta.
@@ -37,7 +38,7 @@ Principi guida:
 | macOS | **macOS 27** | App Mac nativa SwiftUI, **non** Mac Catalyst |
 
 - Linguaggio: **Swift 6.4** (Xcode 27.2), modalità Swift 6 con strict concurrency attiva.
-- Il progetto si scrive per l'ultima versione delle piattaforme: si usano direttamente le API più recenti, come `tabViewBottomAccessory` e Liquid Glass, senza `if #available(...)`. Quando esce una nuova versione maggiore, si aggiornano minimi e toolchain.
+- Il progetto si scrive per l'ultima versione delle piattaforme: si usano direttamente le API più recenti, come Liquid Glass, senza `if #available(...)`. Quando esce una nuova versione maggiore, si aggiornano minimi e toolchain.
 - Un unico target Xcode multipiattaforma ("Multiplatform App").
 
 ---
@@ -328,7 +329,6 @@ Le HIG riservano la tab bar alla **navigazione tra sezioni**, non alle azioni. D
 - **Opzione A — conforme alle HIG (scelta)**
   - Tab bar con due soli tab: Home e Storico.
   - Pulsante "+" (`plus`) come `ToolbarItem(placement: .primaryAction)` in Home e Storico.
-  - Su iOS/iPadOS: pulsante "Nuova operazione" in `tabViewBottomAccessory`, sopra la tab bar, sempre a portata di pollice.
 - **Opzione B — "+" al centro della tab bar (richiesta originale, scartata)**
   - Tab centrale "finto" con icona `plus.circle.fill`. Alla selezione si apre lo sheet e si torna al tab precedente.
   - **Solo su iPhone** (size class compatta). Su iPad e Mac si applica comunque l'Opzione A, perché una voce-azione in sidebar non è accettabile.
@@ -665,10 +665,10 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 
 | # | Decisione | Proposta |
 |---|---|---|
-| 1 | ~~Posizione del pulsante "Nuova operazione"~~ | **Decisa:** Opzione A (toolbar + accessorio tab bar), conforme alle HIG |
+| 1 | ~~Posizione del pulsante "Nuova operazione"~~ | **Decisa:** Opzione A (solo toolbar, senza accessorio sopra la tab bar), conforme alle HIG |
 | 2 | Valuta | Una sola valuta per tutta l'app in v1 |
 | 3 | ~~Cancellazione dei dati dopo N PIN errati~~ | **Decisa:** no in v1 |
 | 4 | Multi-finestra su Mac | No in v1 |
-| 5 | Ultime 3 operazioni in Home: assolute o del mese selezionato | Assolute |
+| 5 | ~~Ultime 3 operazioni in Home: assolute o del mese selezionato~~ | **Decisa:** assolute |
 | 6 | ~~Libreria di accesso dati~~ | **Decisa:** SQLite + GRDB diretto |
 | 7 | Database incluso nel backup di sistema | Sì: così i dati non si perdono cambiando dispositivo |
