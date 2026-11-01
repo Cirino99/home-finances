@@ -4,8 +4,9 @@
 
 > Documento base per lo sviluppo. Raccoglie le decisioni prese su piattaforme, stack, sicurezza, modello dati, navigazione e schermate.
 > Le voci marcate **[DA CONFERMARE]** sono proposte non ancora approvate.
-> Versione 1.12 — 1 novembre 2026
+> Versione 1.13 — 1 novembre 2026
 > **Modifiche:**
+> - 1.13 — Sprint 7: VoiceOver e Dynamic Type, testi fissi localizzabili, scorciatoie ⌘F, ⌘1/⌘2 e ⌘N anche su iPad. Niente UI test automatici: quei percorsi si provano a mano (§ 11). La traduzione in inglese richiede ancora un passaggio (§ 9).
 > - 1.12 — file di export protetto da password (§ 10.2, § 10.3, § 10.4), tolto dalle esclusioni della v1. Attenzione per la pubblicazione: l'app ora cifra dati dell'utente (§ 5.5).
 > - 1.11 — Sprint 6: Impostazioni, categorie, conti, export, import e CSV. Il file importato è trattato come non attendibile (§ 10.4). Condivisione con il foglio di sistema invece di `ShareLink`.
 > - 1.10 — correzioni dalla revisione del codice: attese del PIN misurate senza l'ora modificabile, date sempre gregoriane, PIN reimpostabile se non ci sono dati, biometria legata a un token nel Keychain, ultimo conto attivo protetto, nuovo tentativo di apertura del database, manifest della privacy, colori con varianti chiare e scure.
@@ -499,7 +500,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
   - il colore non è mai l'unico indicatore: il segno +/− è sempre presente.
 - **Dark mode** supportata nativamente.
 - **Feedback aptico** (`sensoryFeedback`): successo al salvataggio, errore sul PIN sbagliato.
-- **Localizzazione:** italiano come lingua base, struttura pronta per l'inglese. Importi e date sempre formattati con la `Locale`.
+- **Localizzazione:** italiano come lingua base. Importi e date sempre formattati con la `Locale`. Tutti i testi passano da chiavi localizzabili e, a runtime, vengono cercati nel catalogo dell'app. Xcode però non estrae da solo le stringhe dei pacchetti: per aggiungere l'inglese vanno inserite nel catalogo, a mano o con un catalogo per modulo.
 - **Privacy nello switcher:** overlay sfocato quando `scenePhase == .inactive` (§ 5.5).
 
 ---
@@ -634,7 +635,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 
 **Prova manuale di sincronizzazione:** export da iPhone → AirDrop → import su Mac, e ritorno dal Mac all'iPad tramite iCloud Drive.
 
-**UI test (XCUITest):**
+**Prove manuali dell'interfaccia** (nessun UI test automatico, per scelta):
 - onboarding;
 - inserimento di un'operazione da Home → presenza in Storico;
 - navigazione Anni → Mesi → Operazioni;

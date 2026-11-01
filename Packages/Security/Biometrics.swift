@@ -100,7 +100,7 @@ public struct SystemBiometricAuthenticator: BiometricAuthenticator {
     public func readUnlockToken(reason: String) async throws -> BiometricTokenResult {
         let context = LAContext()
         context.localizedReason = reason
-        context.localizedFallbackTitle = "Usa il PIN"
+        context.localizedFallbackTitle = String(localized: "Usa il PIN")
 
         var query = baseQuery
         query[kSecReturnData as String] = true

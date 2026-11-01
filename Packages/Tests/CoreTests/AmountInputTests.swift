@@ -48,6 +48,15 @@ struct AppRouterTests {
         #expect(router.historyPath.isEmpty)
     }
 
+    @Test func searchOpensOperationsInHistory() {
+        let router = AppRouter()
+        router.historySegment = .years
+        router.requestSearch()
+        #expect(router.selectedTab == .history)
+        #expect(router.historySegment == .operations)
+        #expect(router.isSearchPending)
+    }
+
     @Test func lockClosesEditorAndKeepsPosition() {
         let router = AppRouter()
         router.selectedTab = .history

@@ -56,6 +56,7 @@ struct LockScreen: View {
                 }
             }
             .padding()
+            .scrollsIfNeeded()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .confirmationDialog(
@@ -120,6 +121,8 @@ struct LockScreen: View {
 
     static func retryMessage(remaining: TimeInterval) -> String {
         let minutes = Int((remaining / 60).rounded(.up))
-        return minutes == 1 ? "Riprova tra 1 minuto" : "Riprova tra \(minutes) minuti"
+        return minutes == 1
+            ? String(localized: "Riprova tra 1 minuto")
+            : String(localized: "Riprova tra \(minutes) minuti")
     }
 }

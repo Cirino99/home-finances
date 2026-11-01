@@ -103,6 +103,16 @@ public extension PINEntryView where Accessory == EmptyView {
     }
 }
 
+public extension View {
+    /// Scorre solo se non ci sta, ad esempio con le dimensioni di testo per l'accessibilità.
+    func scrollsIfNeeded() -> some View {
+        ViewThatFits(in: .vertical) {
+            self
+            ScrollView { self }
+        }
+    }
+}
+
 struct PINDots: View {
     let length: Int
     let filled: Int
@@ -129,8 +139,13 @@ struct PINKeypad<Accessory: View>: View {
     let onDelete: () -> Void
     let accessory: Accessory
 
-    private static var keySize: CGFloat { 76 }
+    @ScaledMetric(relativeTo: .title) private var scaledKeySize: CGFloat = 76
     private let rows: [[Character]] = [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]]
+
+    /// Cresce col testo, ma oltre questo limite il tastierino non starebbe nella larghezza di un iPhone.
+    private var keySize: CGFloat {
+        min(scaledKeySize, 96)
+    }
 
     var body: some View {
         Grid(horizontalSpacing: 24, verticalSpacing: 16) {
@@ -141,12 +156,12 @@ struct PINKeypad<Accessory: View>: View {
             }
             GridRow {
                 accessory
-                    .frame(width: Self.keySize, height: Self.keySize)
+                    .frame(width: keySize, height: keySize)
                 digitKey("0")
                 Button(action: onDelete) {
                     Image(systemName: "delete.left")
                         .font(.title2)
-                        .frame(width: Self.keySize, height: Self.keySize)
+                        .frame(width: keySize, height: keySize)
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
@@ -164,7 +179,7 @@ struct PINKeypad<Accessory: View>: View {
             Text(String(digit))
                 .font(.title)
                 .monospacedDigit()
-                .frame(width: Self.keySize, height: Self.keySize)
+                .frame(width: keySize, height: keySize)
                 .background(.quaternary, in: Circle())
                 .contentShape(Circle())
         }

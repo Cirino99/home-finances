@@ -17,16 +17,16 @@ public enum DataTransferError: Error, Equatable, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .passwordRequired: "Questo file è protetto da password."
-        case .wrongPassword: "Password errata, oppure il file è stato modificato."
-        case .notADatabase: "Questo file non è un database di Home Finances."
-        case .integrityCheckFailed: "Il file è danneggiato."
-        case .missingTables: "Il file non contiene i dati di Home Finances."
-        case .unexpectedContent: "Il file contiene elementi non previsti e non può essere importato."
-        case .corruptedData: "Il file contiene dati non validi."
-        case .newerSchema: "Questo file è stato creato da una versione più recente dell'app. Aggiorna l'app e riprova."
-        case .databaseUnavailable: "Il database non è disponibile."
-        case .noBackup: "Non c'è nessuna copia di sicurezza da ripristinare."
+        case .passwordRequired: String(localized: "Questo file è protetto da password.")
+        case .wrongPassword: String(localized: "Password errata, oppure il file è stato modificato.")
+        case .notADatabase: String(localized: "Questo file non è un database di Home Finances.")
+        case .integrityCheckFailed: String(localized: "Il file è danneggiato.")
+        case .missingTables: String(localized: "Il file non contiene i dati di Home Finances.")
+        case .unexpectedContent: String(localized: "Il file contiene elementi non previsti e non può essere importato.")
+        case .corruptedData: String(localized: "Il file contiene dati non validi.")
+        case .newerSchema: String(localized: "Questo file è stato creato da una versione più recente dell'app. Aggiorna l'app e riprova.")
+        case .databaseUnavailable: String(localized: "Il database non è disponibile.")
+        case .noBackup: String(localized: "Non c'è nessuna copia di sicurezza da ripristinare.")
         }
     }
 }

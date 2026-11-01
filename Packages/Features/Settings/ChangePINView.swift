@@ -34,6 +34,7 @@ struct ChangePINView: View {
             PINEntryView(pin: $pin, isEnabled: !isWorking, failureCount: failureCount, onComplete: submit)
         }
         .padding()
+        .scrollsIfNeeded()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle("Cambia PIN")
         #if os(iOS)

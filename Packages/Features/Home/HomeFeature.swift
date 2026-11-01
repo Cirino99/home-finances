@@ -48,8 +48,7 @@ public struct HomeView: View {
 
     private var monthSelector: some View {
         HStack {
-            Button("Mese precedente", systemImage: "chevron.left", action: model.goToPreviousMonth)
-                .labelStyle(.iconOnly)
+            monthArrow("Mese precedente", systemImage: "chevron.left", action: model.goToPreviousMonth)
                 .disabled(!model.canGoToPreviousMonth)
             Spacer()
             Button(action: model.goToCurrentMonth) {
@@ -59,19 +58,37 @@ public struct HomeView: View {
             }
             .accessibilityHint(model.isCurrentMonth ? "" : "Torna al mese corrente")
             Spacer()
-            Button("Mese successivo", systemImage: "chevron.right", action: model.goToNextMonth)
-                .labelStyle(.iconOnly)
+            monthArrow("Mese successivo", systemImage: "chevron.right", action: model.goToNextMonth)
                 .disabled(!model.canGoToNextMonth)
         }
         .buttonStyle(.borderless)
-        .padding(.vertical, 4)
         .listRowSeparator(.hidden)
     }
 
+    /// Area toccabile di 44 punti, come chiedono le HIG, anche se l'icona è piccola.
+    private func monthArrow(
+        _ title: LocalizedStringKey,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel(title)
+    }
+
     private var quickAdd: some View {
-        HStack(spacing: 12) {
-            quickAddButton("Entrata", kind: .income)
-            quickAddButton("Uscita", kind: .expense)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                quickAddButton("Entrata", kind: .income)
+                quickAddButton("Uscita", kind: .expense)
+            }
+            VStack(spacing: 8) {
+                quickAddButton("Entrata", kind: .income)
+                quickAddButton("Uscita", kind: .expense)
+            }
         }
         .buttonStyle(.glass)
         #if os(iOS)

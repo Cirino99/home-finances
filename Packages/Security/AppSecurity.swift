@@ -44,7 +44,9 @@ public final class AppLock {
     private var biometricPromptedSinceLock = false
     private var biometryChangedSinceUnlock = false
 
-    private static let biometricReason = "Sblocca i tuoi dati finanziari"
+    private static var biometricReason: String {
+        String(localized: "Sblocca i tuoi dati finanziari")
+    }
 
     /// `hasExistingData` viene richiamata a ogni controllo: i dati possono comparire durante la sessione.
     public init(
@@ -176,7 +178,7 @@ public final class AppLock {
     /// un PIN dimenticato renderebbe l'app inutilizzabile. Con dati presenti non si può fare.
     public func resetForgottenPIN() async throws {
         guard phase == .locked, !hasExistingData() else { throw AppLockError.invalidState }
-        try await authenticator.authenticateDeviceOwner(reason: "Conferma la tua identità per scegliere un nuovo PIN")
+        try await authenticator.authenticateDeviceOwner(reason: String(localized: "Conferma la tua identità per scegliere un nuovo PIN"))
         // Ricontrollato dopo il prompt: nel frattempo lo stato potrebbe essere cambiato.
         guard phase == .locked, !hasExistingData() else { throw AppLockError.invalidState }
         try biometrics.disable()
@@ -193,7 +195,7 @@ public final class AppLock {
     /// Sul ripristino senza PIN, chiede il codice del dispositivo prima di far scegliere un nuovo PIN (§ 5.5).
     public func authorizeRestore() async throws {
         guard phase == .setup(.restoredData) else { throw AppLockError.invalidState }
-        try await authenticator.authenticateDeviceOwner(reason: "Conferma la tua identità per proteggere i dati presenti su questo dispositivo")
+        try await authenticator.authenticateDeviceOwner(reason: String(localized: "Conferma la tua identità per proteggere i dati presenti su questo dispositivo"))
         isRestoreAuthorized = true
     }
 
@@ -218,7 +220,7 @@ public final class AppLock {
     /// Consentito ad app sbloccata o durante l'onboarding, dopo aver scelto il PIN.
     public func enableBiometricUnlock() async throws {
         guard phase == .unlocked || isSetupPINSaved else { throw AppLockError.invalidState }
-        try await biometrics.enable(reason: "Attiva lo sblocco dei tuoi dati finanziari")
+        try await biometrics.enable(reason: String(localized: "Attiva lo sblocco dei tuoi dati finanziari"))
         isBiometricUnlockEnabled = true
         offersBiometricReenable = false
     }

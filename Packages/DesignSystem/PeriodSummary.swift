@@ -44,23 +44,38 @@ public struct PeriodSummary: View {
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
     }
 
+    private func rowTitle(_ title: LocalizedStringKey, systemImage: String, color: Color) -> some View {
+        Label {
+            Text(title)
+        } icon: {
+            Image(systemName: systemImage)
+                .foregroundStyle(color)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func rowAmount(_ amount: Int64) -> some View {
+        Text(MoneyFormat.string(minorUnits: amount, currency: currency))
+            .monospacedDigit()
+            .lineLimit(1)
+    }
+
     private func row(
         _ title: LocalizedStringKey,
         systemImage: String,
         amount: Int64,
         color: Color
     ) -> some View {
-        HStack {
-            Label {
-                Text(title)
-            } icon: {
-                Image(systemName: systemImage)
-                    .foregroundStyle(color)
+        ViewThatFits(in: .horizontal) {
+            HStack {
+                rowTitle(title, systemImage: systemImage, color: color)
+                Spacer()
+                rowAmount(amount)
             }
-            Spacer()
-            Text(MoneyFormat.string(minorUnits: amount, currency: currency))
-                .monospacedDigit()
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                rowTitle(title, systemImage: systemImage, color: color)
+                rowAmount(amount)
+            }
         }
         .accessibilityElement(children: .combine)
     }

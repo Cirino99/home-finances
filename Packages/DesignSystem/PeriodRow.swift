@@ -25,9 +25,15 @@ public struct PeriodRow: View {
                     .foregroundStyle(totals.balance < 0 ? Color.expense : Color.primary)
                     .accessibilityLabel("Saldo \(MoneyFormat.string(minorUnits: totals.balance, currency: currency, signed: true))")
             }
-            HStack(spacing: 12) {
-                amount("arrow.down.circle", totals.income, color: .income, label: "Entrate")
-                amount("arrow.up.circle", totals.expense, color: .expense, label: "Uscite")
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    amount("arrow.down.circle", totals.income, color: .income, label: "Entrate")
+                    amount("arrow.up.circle", totals.expense, color: .expense, label: "Uscite")
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    amount("arrow.down.circle", totals.income, color: .income, label: "Entrate")
+                    amount("arrow.up.circle", totals.expense, color: .expense, label: "Uscite")
+                }
             }
             .font(.footnote)
         }

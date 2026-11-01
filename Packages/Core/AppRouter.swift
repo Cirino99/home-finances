@@ -54,8 +54,17 @@ public final class AppRouter {
     public var pendingImportURL: URL?
     /// Esito di un'azione sui dati, mostrato sopra tutto.
     public var transferMessage: String?
+    /// ⌘F: il campo di ricerca prende il focus appena è sullo schermo.
+    public var isSearchPending = false
 
     public init() {}
+
+    /// La ricerca sta nel segmento Operazioni dello Storico (§ 8.3).
+    public func requestSearch() {
+        selectedTab = .history
+        historySegment = .operations
+        isSearchPending = true
+    }
 
     public func newOperation(kind: OperationKind? = nil) {
         editor = .new(kind: kind)

@@ -43,6 +43,7 @@ struct OnboardingView: View {
             }
         }
         .padding()
+        .scrollsIfNeeded()
         .frame(maxWidth: 480, maxHeight: .infinity)
         .frame(maxWidth: .infinity)
         .animation(.default, value: step)

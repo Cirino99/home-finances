@@ -252,6 +252,26 @@ private extension View {
     }
 }
 
+private extension CategoryColor {
+    /// Per VoiceOver.
+    var spokenName: LocalizedStringKey {
+        switch self {
+        case .gray: "Grigio"
+        case .red: "Rosso"
+        case .orange: "Arancione"
+        case .yellow: "Giallo"
+        case .green: "Verde"
+        case .mint: "Menta"
+        case .teal: "Verde acqua"
+        case .blue: "Blu"
+        case .indigo: "Indaco"
+        case .purple: "Viola"
+        case .pink: "Rosa"
+        case .brown: "Marrone"
+        }
+    }
+}
+
 // MARK: Editor
 
 private struct CategoryEditor: View {
@@ -296,7 +316,7 @@ private struct CategoryEditor: View {
                                 }
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(option.rawValue)
+                        .accessibilityLabel(option.spokenName)
                         .accessibilityAddTraits(color == option ? .isSelected : [])
                     }
                 }
@@ -304,7 +324,7 @@ private struct CategoryEditor: View {
             }
             Section("Icona") {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 44))], spacing: 12) {
-                    ForEach(Self.symbols, id: \.self) { option in
+                    ForEach(Array(Self.symbols.enumerated()), id: \.element) { index, option in
                         Button {
                             symbol = option
                         } label: {
@@ -318,7 +338,7 @@ private struct CategoryEditor: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(option)
+                        .accessibilityLabel("Icona \(index + 1)")
                         .accessibilityAddTraits(symbol == option ? .isSelected : [])
                     }
                 }

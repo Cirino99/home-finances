@@ -26,6 +26,8 @@ struct MonthsChart: View {
                 .position(by: .value("Tipo", "Entrate"))
                 .foregroundStyle(by: .value("Tipo", "Entrate"))
                 .cornerRadius(3)
+                .accessibilityLabel("\(DayFormat.monthTitle(month.month)), entrate")
+                .accessibilityValue(MoneyFormat.string(minorUnits: month.totals.income, currency: currency))
 
                 BarMark(
                     x: .value("Mese", label(month)),
@@ -35,6 +37,8 @@ struct MonthsChart: View {
                 .position(by: .value("Tipo", "Uscite"))
                 .foregroundStyle(by: .value("Tipo", "Uscite"))
                 .cornerRadius(3)
+                .accessibilityLabel("\(DayFormat.monthTitle(month.month)), uscite")
+                .accessibilityValue(MoneyFormat.string(minorUnits: month.totals.expense, currency: currency))
             }
 
             if let selected {
@@ -50,7 +54,6 @@ struct MonthsChart: View {
         .chartLegend(position: .bottom)
         .frame(height: 220)
         .padding(.vertical, 8)
-        .accessibilityLabel("Entrate e uscite degli ultimi mesi. I valori sono nell'elenco sotto il grafico.")
     }
 
     private var selected: MonthTotals? {
@@ -91,6 +94,8 @@ struct YearsChart: View {
                 )
                 .foregroundStyle(year.totals.balance < 0 ? Color.expense : Color.income)
                 .cornerRadius(3)
+                .accessibilityLabel("\(String(year.year)), saldo")
+                .accessibilityValue(MoneyFormat.string(minorUnits: year.totals.balance, currency: currency, signed: true))
             }
 
             RuleMark(y: .value("Zero", 0.0))
@@ -111,7 +116,6 @@ struct YearsChart: View {
         .chartXSelection(value: $selectedLabel)
         .frame(height: 200)
         .padding(.vertical, 8)
-        .accessibilityLabel("Saldo per anno. I valori sono nell'elenco sotto il grafico.")
     }
 
     private var selected: YearTotals? {

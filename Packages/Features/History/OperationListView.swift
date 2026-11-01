@@ -61,6 +61,7 @@ struct HistoryRouteRow<Content: View>: View {
 /// Campo di ricerca sotto il picker dei segmenti.
 private struct HistorySearchField: View {
     @Binding var text: String
+    let isFocused: FocusState<Bool>.Binding
 
     var body: some View {
         HStack(spacing: 8) {
@@ -70,6 +71,7 @@ private struct HistorySearchField: View {
             TextField("Nota o categoria", text: $text)
                 .autocorrectionDisabled()
                 .submitLabel(.search)
+                .focused(isFocused)
             if !text.isEmpty {
                 Button("Cancella ricerca", systemImage: "xmark.circle.fill") {
                     text = ""
@@ -93,6 +95,7 @@ struct OperationListView: View {
     let selection: Binding<HistoryRoute?>?
     @State private var model: OperationListModel
     @State private var pendingDeletion: OperationID?
+    @FocusState private var isSearchFocused: Bool
     @Environment(AppRouter.self) private var router
 
     init(month: YearMonth?, repositories: HistoryRepositories, selection: Binding<HistoryRoute?>? = nil) {
@@ -124,13 +127,16 @@ struct OperationListView: View {
         .overlay { emptyState }
         #if os(macOS)
         .searchable(text: $model.searchText, prompt: "Nota o categoria")
+        .searchFocused($isSearchFocused)
         #else
         // Non `.searchable`: starebbe sopra il picker dei segmenti e lo sposterebbe a ogni cambio di segmento.
         .safeAreaBar(edge: .top, spacing: 0) {
-            HistorySearchField(text: $model.searchText)
+            HistorySearchField(text: $model.searchText, isFocused: $isSearchFocused)
         }
         .scrollDismissesKeyboard(.interactively)
         #endif
+        .onAppear(perform: focusSearchIfPending)
+        .onChange(of: router.isSearchPending) { focusSearchIfPending() }
         .toolbar {
             ToolbarItem(placement: .automatic) {
                 filterMenu
@@ -165,6 +171,13 @@ struct OperationListView: View {
 
     private var today: Day {
         Day(containing: Date())
+    }
+
+    /// Solo dall'elenco completo, non da "Operazioni del mese".
+    private func focusSearchIfPending() {
+        guard router.isSearchPending, model.month == nil else { return }
+        router.isSearchPending = false
+        isSearchFocused = true
     }
 
     private var isConfirmingDeletion: Binding<Bool> {

@@ -10,7 +10,16 @@
     "Blocca" : {
 
     },
+    "Cerca" : {
+
+    },
     "Dati" : {
+
+    },
+    "Dati importati: %lld operazioni" : {
+
+    },
+    "Dati ripristinati: %lld operazioni" : {
 
     },
     "Esporta database…" : {

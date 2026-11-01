@@ -11,11 +11,11 @@ public enum DayFormat {
         locale: Locale = .current
     ) -> String {
         let calendar = calendar.gregorianEquivalent
-        if day == today { return "Oggi" }
+        if day == today { return String(localized: "Oggi") }
         guard let date = day.date(in: calendar), let todayDate = today.date(in: calendar) else {
             return day.string
         }
-        if calendar.dateComponents([.day], from: date, to: todayDate).day == 1 { return "Ieri" }
+        if calendar.dateComponents([.day], from: date, to: todayDate).day == 1 { return String(localized: "Ieri") }
 
         var style = Date.FormatStyle(locale: locale, calendar: calendar, timeZone: calendar.timeZone)
             .day()
@@ -34,11 +34,11 @@ public enum DayFormat {
         locale: Locale = .current
     ) -> String {
         let calendar = calendar.gregorianEquivalent
-        if day == today { return "Oggi" }
+        if day == today { return String(localized: "Oggi") }
         guard let date = day.date(in: calendar), let todayDate = today.date(in: calendar) else {
             return day.string
         }
-        if calendar.dateComponents([.day], from: date, to: todayDate).day == 1 { return "Ieri" }
+        if calendar.dateComponents([.day], from: date, to: todayDate).day == 1 { return String(localized: "Ieri") }
 
         var style = Date.FormatStyle(locale: locale, calendar: calendar, timeZone: calendar.timeZone)
             .weekday(.wide)
