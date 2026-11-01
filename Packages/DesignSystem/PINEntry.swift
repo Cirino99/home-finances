@@ -54,7 +54,8 @@ public struct PINEntryView<Accessory: View>: View {
                 accessory: accessory
             )
         }
-        .focusable(isEnabled)
+        // Sempre attivabile: se il focus si perdesse durante la verifica, la tastiera fisica smetterebbe di funzionare.
+        .focusable()
         .focused($isFocused)
         .focusEffectDisabled()
         .onKeyPress(phases: .down) { press in
@@ -74,9 +75,11 @@ public struct PINEntryView<Accessory: View>: View {
 
     private func append(_ digit: Character) {
         guard isEnabled, pin.count < length else { return }
-        pin.append(digit)
-        if pin.count == length {
-            onComplete(pin)
+        // Il valore si calcola prima di scriverlo: dentro `onKeyPress` il binding può restituire ancora quello vecchio.
+        let updated = pin + String(digit)
+        pin = updated
+        if updated.count == length {
+            onComplete(updated)
         }
     }
 
