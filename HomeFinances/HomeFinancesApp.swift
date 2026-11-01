@@ -1,4 +1,5 @@
 import AppSecurity
+import Core
 import Persistence
 import SwiftUI
 #if os(iOS)
@@ -9,6 +10,7 @@ import UIKit
 struct HomeFinancesApp: App {
     @State private var databaseState: DatabaseState
     @State private var appLock: AppLock
+    @State private var router = AppRouter()
 
     init() {
         let databaseState = DatabaseState.open()
@@ -24,9 +26,14 @@ struct HomeFinancesApp: App {
         #if os(macOS)
         // Una sola finestra principale in v1 (§ 7.4).
         Window("Home Finances", id: "main") {
-            AppRoot(databaseState: databaseState, appLock: appLock)
+            AppRoot(databaseState: databaseState, appLock: appLock, router: router)
         }
         .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("Nuova operazione") { router.newOperation() }
+                    .keyboardShortcut("n")
+                    .disabled(appLock.phase != .unlocked)
+            }
             CommandGroup(after: .appSettings) {
                 Button("Blocca") { appLock.lock() }
                     .keyboardShortcut("l", modifiers: [.command, .control])
@@ -35,7 +42,7 @@ struct HomeFinancesApp: App {
         }
         #else
         WindowGroup {
-            AppRoot(databaseState: databaseState, appLock: appLock)
+            AppRoot(databaseState: databaseState, appLock: appLock, router: router)
         }
         #endif
     }

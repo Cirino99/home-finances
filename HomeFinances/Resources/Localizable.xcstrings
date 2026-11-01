@@ -4,7 +4,7 @@
     "Blocca" : {
 
     },
-    "Database aperto" : {
+    "Home" : {
 
     },
     "Home Finances" : {
@@ -13,7 +13,10 @@
     "Impossibile aprire il database" : {
 
     },
-    "SQLite %@" : {
+    "Nuova operazione" : {
+
+    },
+    "Storico" : {
 
     }
   },

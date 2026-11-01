@@ -26,6 +26,30 @@ public enum MinorUnits {
     }
 }
 
+/// Testo del campo importo dell'editor (§ 8.5).
+public enum AmountInput {
+    /// Cifre con al massimo 2 decimali. Accetta sia `,` sia `.` come separatore, qualunque sia la `Locale`,
+    /// e non ammette separatori delle migliaia: "1.234" non è valido invece di diventare 1,23 o 1234.
+    public static func minorUnits(from text: String) -> Int64? {
+        let parts = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: /[.,]/, omittingEmptySubsequences: false)
+        guard (1...2).contains(parts.count),
+              parts.allSatisfy({ !$0.isEmpty && $0.utf8.allSatisfy { (48...57).contains($0) } }),
+              parts.count == 1 || parts[1].count <= 2,
+              let value = Decimal(string: parts.joined(separator: "."), locale: Locale(identifier: "en_US_POSIX"))
+        else { return nil }
+        return try? MinorUnits.from(value)
+    }
+
+    /// Testo con cui precompilare il campo, con il separatore della `Locale`.
+    public static func text(minorUnits: Int64, locale: Locale = .current) -> String {
+        MinorUnits.decimal(minorUnits).formatted(
+            .number.precision(.fractionLength(2)).grouping(.never).locale(locale)
+        )
+    }
+}
+
 /// Formattazione degli importi con la `Locale` dell'utente (§ 6.4).
 public enum MoneyFormat {
     /// `signed`: segno sempre esplicito, anche per i positivi.

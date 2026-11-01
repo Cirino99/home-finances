@@ -4,8 +4,9 @@
 
 > Documento base per lo sviluppo. Raccoglie le decisioni prese su piattaforme, stack, sicurezza, modello dati, navigazione e schermate.
 > Le voci marcate **[DA CONFERMARE]** sono proposte non ancora approvate.
-> Versione 1.5 — 1 novembre 2026
+> Versione 1.6 — 1 novembre 2026
 > **Modifiche:**
+> - 1.6 — decisa la #1: Opzione A per "Nuova operazione". `AppRouter` sta in `Core`, così le feature possono usarlo senza dipendere dall'app.
 > - 1.5 — Sprint 2: i protocolli dei repository stanno in `Core`. La valuta si sceglie dopo il primo sblocco, finché il database non ha i dati iniziali. Importi: scala fissa a 100 per ogni valuta.
 > - 1.4 — decisa la #3: nessuna cancellazione dei dati dopo N PIN errati in v1. La scelta della valuta nell'onboarding arriva con lo strato dati (Sprint 2). Biometria: `domainState` al posto di `evaluatedPolicyDomainState`, deprecato.
 > - 1.1 — la cifratura del database (SQLCipher) è rimandata a una versione futura (§ 13). L'accesso resta protetto da PIN / Face ID.
@@ -323,12 +324,12 @@ App
 
 Le HIG riservano la tab bar alla **navigazione tra sezioni**, non alle azioni. Due opzioni:
 
-- **Opzione A — conforme alle HIG (consigliata) [DA CONFERMARE]**
+- **Opzione A — conforme alle HIG (scelta)**
   - Tab bar con due soli tab: Home e Storico.
   - Pulsante "+" (`plus`) come `ToolbarItem(placement: .primaryAction)` in Home e Storico.
   - Su iOS/iPadOS 26+: pulsante "Nuova operazione" in `tabViewBottomAccessory`, sopra la tab bar, sempre a portata di pollice.
   - Su iOS 18: solo il "+" in toolbar e l'aggiunta rapida in Home.
-- **Opzione B — "+" al centro della tab bar (richiesta originale)**
+- **Opzione B — "+" al centro della tab bar (richiesta originale, scartata)**
   - Tab centrale "finto" con icona `plus.circle.fill`. Alla selezione si apre lo sheet e si torna al tab precedente.
   - **Solo su iPhone** (size class compatta). Su iPad e Mac si applica comunque l'Opzione A, perché una voce-azione in sidebar non è accettabile.
   - Ordine dei tab: Home · [+] · Storico.
@@ -337,7 +338,7 @@ In entrambi i casi su Mac c'è la voce di menu **File › Nuova operazione** con
 
 ### 7.3 Implementazione della navigazione
 
-- **Router di app** `@Observable AppRouter`, iniettato nell'`Environment`:
+- **Router di app** `@Observable AppRouter`, definito in `Core` e iniettato nell'`Environment`:
   - `selectedTab: AppTab` (`.home`, `.history`);
   - `editor: EditorRequest?`, con `EditorRequest` = `.new(kind: OperationKind?)` oppure `.edit(OperationID)`;
   - `historyPath: [HistoryRoute]`.
@@ -663,7 +664,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 
 | # | Decisione | Proposta |
 |---|---|---|
-| 1 | Posizione del pulsante "Nuova operazione" | **Opzione A** (toolbar + accessorio tab bar), conforme alle HIG |
+| 1 | ~~Posizione del pulsante "Nuova operazione"~~ | **Decisa:** Opzione A (toolbar + accessorio tab bar), conforme alle HIG |
 | 2 | Valuta | Una sola valuta per tutta l'app in v1 |
 | 3 | ~~Cancellazione dei dati dopo N PIN errati~~ | **Decisa:** no in v1 |
 | 4 | Multi-finestra su Mac | No in v1 |

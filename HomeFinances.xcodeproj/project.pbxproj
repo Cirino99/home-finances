@@ -60,6 +60,14 @@
 			);
 			sourceTree = "<group>";
 		};
+		A10000000000000000000041 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000010 /* HomeFinances.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
 		A10000000000000000000042 /* Config */ = {
 			isa = PBXGroup;
 			children = (
@@ -67,14 +75,6 @@
 				A10000000000000000000013 /* Local.example.xcconfig */,
 			);
 			path = Config;
-			sourceTree = "<group>";
-		};
-		A10000000000000000000041 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				A10000000000000000000010 /* HomeFinances.app */,
-			);
-			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
