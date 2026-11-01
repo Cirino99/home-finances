@@ -452,13 +452,14 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 | Campo | Controllo | Default | Validazione |
 |---|---|---|---|
 | Tipo | `Picker` a segmenti Uscita / Entrata | Uscita, oppure quello passato dall'aggiunta rapida | Obbligatorio |
-| Importo | Campo grande, tastierino decimale, **focus automatico** all'apertura | Vuoto | > 0, al massimo 2 decimali |
+| Importo | Campo grande, tastierino decimale, **nessun focus automatico**: la tastiera si apre solo toccando il campo | Vuoto | > 0, al massimo 2 decimali |
 | Categoria | Griglia o elenco di icone filtrato per tipo | Ultima usata per quel tipo | Obbligatoria, coerente col tipo |
 | Data | `DatePicker` (solo data) | Oggi | Nessun limite in v1 |
 | Conto | `Picker` (nascosto se esiste un solo conto) | Conto principale | Obbligatorio |
 | Nota | `TextField` multilinea | Vuota | Facoltativa, massimo 200 caratteri |
 
 **Comportamento:**
+- Tastiera su iOS/iPadOS: si chiude trascinando il modulo verso il basso, fino al bordo della tastiera.
 - Se cambia il tipo, la categoria viene azzerata quando non è compatibile.
 - Uscita con modifiche non salvate (Annulla o swipe giù): `confirmationDialog` "Scartare le modifiche?". Si usa `interactiveDismissDisabled` quando il modulo è stato modificato.
 - Dopo il salvataggio: chiusura dello sheet + feedback aptico di successo. Home e Storico si aggiornano da soli tramite observation.

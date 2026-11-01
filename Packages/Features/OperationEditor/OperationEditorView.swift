@@ -6,7 +6,6 @@ import SwiftUI
 public struct OperationEditorView: View {
     @State private var model: OperationEditorModel
     @State private var isConfirmingDiscard = false
-    @FocusState private var isAmountFocused: Bool
     @Environment(\.dismiss) private var dismiss
     private let onSaved: () -> Void
 
@@ -48,7 +47,6 @@ public struct OperationEditorView: View {
         #endif
         .task {
             await model.load()
-            isAmountFocused = true
         }
     }
 
@@ -89,7 +87,6 @@ public struct OperationEditorView: View {
                         .font(.largeTitle)
                         .monospacedDigit()
                         .multilineTextAlignment(.trailing)
-                        .focused($isAmountFocused)
                         .labelsHidden()
                         #if os(iOS)
                         .keyboardType(.decimalPad)
@@ -130,6 +127,8 @@ public struct OperationEditorView: View {
             }
         }
         .formStyle(.grouped)
+        // Trascinando il modulo verso il basso la tastiera segue il dito e si chiude.
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private func cancel() {
