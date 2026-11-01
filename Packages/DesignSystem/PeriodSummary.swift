@@ -40,6 +40,8 @@ public struct PeriodSummary: View {
             .accessibilityElement(children: .combine)
         }
         .padding(.vertical, 4)
+        // Le righe con un `Label` allineano la linea sotto al testo, accorciandola: qui parte dal bordo.
+        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
     }
 
     private func row(

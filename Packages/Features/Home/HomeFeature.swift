@@ -21,6 +21,7 @@ public struct HomeView: View {
                 monthSelector
                 if let currency = model.currency {
                     PeriodSummary(totals: model.totals, currency: currency)
+                        .listRowSeparator(.hidden, edges: .top)
                 }
             }
             Section {
@@ -28,6 +29,9 @@ public struct HomeView: View {
             }
             recentSection
         }
+        #if os(iOS)
+        .listSectionSpacing(.compact)
+        #endif
         .navigationTitle("Home")
         .navigationDestination(for: OperationID.self) { id in
             OperationDetailView(id: id, operations: operations)
@@ -60,6 +64,8 @@ public struct HomeView: View {
                 .disabled(!model.canGoToNextMonth)
         }
         .buttonStyle(.borderless)
+        .padding(.vertical, 4)
+        .listRowSeparator(.hidden)
     }
 
     private var quickAdd: some View {
@@ -68,19 +74,28 @@ public struct HomeView: View {
             quickAddButton("Uscita", kind: .expense)
         }
         .buttonStyle(.glass)
+        #if os(iOS)
+        // Sfondo trasparente: i tasti si allineano ai bordi delle sezioni, senza margini propri.
+        .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 0))
+        #endif
         .listRowBackground(Color.clear)
-        .listRowInsets(EdgeInsets())
+        .listRowSeparator(.hidden)
     }
 
     private func quickAddButton(_ title: LocalizedStringKey, kind: OperationKind) -> some View {
         Button {
             router.newOperation(kind: kind)
         } label: {
-            Label(title, systemImage: "plus")
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
+            Label {
+                Text(title)
+                    .foregroundStyle(Color.primary)
+            } icon: {
+                Image(systemName: "plus")
+                    .foregroundStyle(kind.color)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
         }
-        .tint(kind.color)
     }
 
     @ViewBuilder
@@ -101,7 +116,15 @@ public struct HomeView: View {
                             OperationRow(item: item, today: model.today)
                         }
                     }
-                    Button("Vedi tutte") { router.showAllOperations() }
+                    Button {
+                        router.showAllOperations()
+                    } label: {
+                        Text("Vedi tutte")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 4)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
                 }
             }
         } else if model.loadFailed {
