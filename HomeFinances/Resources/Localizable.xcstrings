@@ -1,0 +1,78 @@
+{
+  "sourceLanguage" : "it",
+  "strings" : {
+    "Annulla" : {
+
+    },
+    "App bloccata" : {
+
+    },
+    "Blocca" : {
+
+    },
+    "Cerca" : {
+
+    },
+    "Dati" : {
+
+    },
+    "Dati importati: %lld operazioni" : {
+
+    },
+    "Dati ripristinati: %lld operazioni" : {
+
+    },
+    "Esporta database…" : {
+
+    },
+    "File protetto" : {
+
+    },
+    "Home" : {
+
+    },
+    "Home Finances" : {
+
+    },
+    "Importa" : {
+
+    },
+    "Importa database…" : {
+
+    },
+    "Impossibile aprire il database" : {
+
+    },
+    "Impostazioni" : {
+
+    },
+    "Impostazioni…" : {
+
+    },
+    "Inserisci la password scelta quando il file è stato esportato." : {
+
+    },
+    "Nuova operazione" : {
+
+    },
+    "OK" : {
+
+    },
+    "Password" : {
+
+    },
+    "Password errata" : {
+
+    },
+    "Riprova" : {
+
+    },
+    "Sblocca Home Finances per vedere le impostazioni." : {
+
+    },
+    "Storico" : {
+
+    }
+  },
+  "version" : "1.0"
+}

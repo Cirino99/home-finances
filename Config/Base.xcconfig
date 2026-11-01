@@ -1,0 +1,7 @@
+// Configurazione di base del target HomeFinances.
+//
+// Le impostazioni personali (il Team di firma) stanno in Local.xcconfig, ignorato da git:
+// copia Local.example.xcconfig in Local.xcconfig e inserisci il tuo Team ID.
+// Non impostare il Team dall'editor di Xcode: lo scriverebbe nel progetto versionato.
+
+#include? "Local.xcconfig"

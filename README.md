@@ -4,8 +4,19 @@
 
 > Documento base per lo sviluppo. Raccoglie le decisioni prese su piattaforme, stack, sicurezza, modello dati, navigazione e schermate.
 > Le voci marcate **[DA CONFERMARE]** sono proposte non ancora approvate.
-> Versione 1.3 — 30 ottobre 2026
+> Versione 1.14 — 1 novembre 2026
 > **Modifiche:**
+> - 1.14 — decise: PIN dimenticato con dati presenti non recuperabile; backup di sistema a scelta dell'utente, inclusi di default (§ 5.5).
+> - 1.13 — Sprint 7: VoiceOver e Dynamic Type, testi fissi localizzabili, scorciatoie ⌘F, ⌘1/⌘2 e ⌘N anche su iPad. Niente UI test automatici: quei percorsi si provano a mano (§ 11). La traduzione in inglese richiede ancora un passaggio (§ 9).
+> - 1.12 — file di export protetto da password (§ 10.2, § 10.3, § 10.4), tolto dalle esclusioni della v1. Attenzione per la pubblicazione: l'app ora cifra dati dell'utente (§ 5.5).
+> - 1.11 — Sprint 6: Impostazioni, categorie, conti, export, import e CSV. Il file importato è trattato come non attendibile (§ 10.4). Condivisione con il foglio di sistema invece di `ShareLink`.
+> - 1.10 — correzioni dalla revisione del codice: attese del PIN misurate senza l'ora modificabile, date sempre gregoriane, PIN reimpostabile se non ci sono dati, biometria legata a un token nel Keychain, ultimo conto attivo protetto, nuovo tentativo di apertura del database, manifest della privacy, colori con varianti chiare e scure.
+> - 1.9 — Sprint 5: Storico con Operazioni, Mesi, Anni, grafici, ricerca e filtri. Nelle split view il primo elemento di `historyPath` è la selezione.
+> - 1.8 — Sprint 4: Home e dettaglio operazione. Decisa la #5: le ultime 3 operazioni sono le più recenti in assoluto.
+> - 1.7 — il progetto punta all'ultima versione delle piattaforme: minimo iOS/iPadOS/macOS 27, Swift 6.4, GRDB 7.11. Niente più fallback per le versioni precedenti.
+> - 1.6 — decisa la #1: Opzione A per "Nuova operazione". `AppRouter` sta in `Core`, così le feature possono usarlo senza dipendere dall'app.
+> - 1.5 — Sprint 2: i protocolli dei repository stanno in `Core`. La valuta si sceglie dopo il primo sblocco, finché il database non ha i dati iniziali. Importi: scala fissa a 100 per ogni valuta.
+> - 1.4 — decisa la #3: nessuna cancellazione dei dati dopo N PIN errati in v1. La scelta della valuta nell'onboarding arriva con lo strato dati (Sprint 2). Biometria: `domainState` al posto di `evaluatedPolicyDomainState`, deprecato.
 > - 1.1 — la cifratura del database (SQLCipher) è rimandata a una versione futura (§ 13). L'accesso resta protetto da PIN / Face ID.
 > - 1.2 — confermati SQLite + GRDB. La sincronizzazione tra dispositivi è **manuale**, tramite export e import del database dall'app (§ 10).
 > - 1.3 — nome del progetto: repository `home-finances`, progetto Xcode `HomeFinances`, file di export `.homefinances`.
@@ -28,12 +39,12 @@ Principi guida:
 
 | Piattaforma | Versione minima | Note |
 |---|---|---|
-| iOS (iPhone) | **iOS 18** | Necessario per `TabView` con `.sidebarAdaptable` e la nuova API `Tab` |
-| iPadOS | **iPadOS 18** | Come sopra |
-| macOS | **macOS 15** | App Mac nativa SwiftUI, **non** Mac Catalyst |
+| iOS (iPhone) | **iOS 27** | Ultima versione: nessun fallback per le precedenti |
+| iPadOS | **iPadOS 27** | Come sopra |
+| macOS | **macOS 27** | App Mac nativa SwiftUI, **non** Mac Catalyst |
 
-- Linguaggio: **Swift 6** con strict concurrency attiva.
-- Funzionalità di iOS/iPadOS/macOS 26, come `tabViewBottomAccessory` e Liquid Glass, si usano dietro `if #available(...)`, con un fallback per le versioni 18/15.
+- Linguaggio: **Swift 6.4** (Xcode 27.2), modalità Swift 6 con strict concurrency attiva.
+- Il progetto si scrive per l'ultima versione delle piattaforme: si usano direttamente le API più recenti, come Liquid Glass, senza `if #available(...)`. Quando esce una nuova versione maggiore, si aggiornano minimi e toolchain.
 - Un unico target Xcode multipiattaforma ("Multiplatform App").
 
 ---
@@ -44,7 +55,7 @@ Principi guida:
 |---|---|---|
 | UI | **SwiftUI** + Observation (`@Observable`) | Codice unico per le tre piattaforme |
 | Database | **SQLite** (versione di sistema) | Locale, nessun server, aggregati calcolati in SQL |
-| Accesso dati | **GRDB.swift** 7.x tramite Swift Package Manager (pacchetto standard) | Migrazioni, record tipizzati, `ValueObservation` per una UI reattiva |
+| Accesso dati | **GRDB.swift** 7.11 tramite Swift Package Manager (pacchetto standard) | Migrazioni, record tipizzati, `ValueObservation` per una UI reattiva |
 | Hash del PIN | **CommonCrypto** (PBKDF2-HMAC-SHA256) | Il PIN non viene mai salvato in chiaro |
 | Segreti | **Keychain Services** | Conservazione dell'hash del PIN e del contatore dei tentativi |
 | Autenticazione | **LocalAuthentication** | Face ID / Touch ID |
@@ -70,6 +81,7 @@ Principi guida:
 
 ```
 HomeFinances.xcodeproj
+├── Config/                     ← Base.xcconfig + Local.xcconfig (Team di firma, non versionato)
 ├── HomeFinances/               ← target app (sottile: entry point, scene, composizione)
 │   ├── HomeFinancesApp.swift
 │   ├── AppRoot.swift           ← gestione blocco/sblocco + TabView
@@ -87,11 +99,19 @@ HomeFinances.xcodeproj
         └── Settings/
 ```
 
+Configurazione locale:
+
+- Il Team di firma non è nel repository. Prima della prima build:
+  1. copiare `Config/Local.example.xcconfig` in `Config/Local.xcconfig` (ignorato da git);
+  2. inserire il proprio Team ID in `DEVELOPMENT_TEAM`.
+- **Non scegliere il Team dall'editor Signing & Capabilities di Xcode:** lo scriverebbe in `project.pbxproj`, che è versionato.
+- Il Team serve anche su Mac: il Keychain in stile iOS richiede un profilo di provisioning, altrimenti risponde `-34018`.
+
 Regole di dipendenza:
 
 - `Core` non dipende da nulla.
 - `Persistence` e `Security` dipendono da `Core`.
-- `Features` dipendono da `Core`, `DesignSystem` e dai **protocolli** dei repository, non da GRDB direttamente.
+- `Features` dipendono da `Core`, `DesignSystem` e dai **protocolli** dei repository, definiti in `Core`, non da GRDB direttamente.
 - L'app compone le dipendenze e le inietta tramite `Environment`.
 
 Pattern:
@@ -129,16 +149,18 @@ Pattern:
 | 7 | Attesa 15 minuti |
 | ≥ 8 | Attesa 1 ora per ogni tentativo |
 
-- Il contatore e il timestamp del blocco sono salvati nel Keychain, così non si azzerano reinstallando o cancellando le preferenze.
-- **Nessuna cancellazione automatica dei dati** dopo N tentativi in v1 **[DA CONFERMARE]**.
+- Il contatore e l'attesa sono salvati nel Keychain, così non si azzerano reinstallando o cancellando le preferenze.
+- L'attesa si misura col tempo dall'avvio del dispositivo, non con l'ora: cambiare data e ora non la accorcia. Dopo un riavvio ricomincia per intero.
+- **PIN dimenticato:** se il database non contiene dati, si può reimpostare il PIN dopo il codice del dispositivo. Serve perché su iPhone il Keychain sopravvive alla disinstallazione. Con dati presenti non c'è modo di reimpostarlo: è una scelta, perché chi conosce il codice del dispositivo non deve poter entrare nell'app.
+- **Nessuna cancellazione automatica dei dati** dopo N tentativi in v1.
+- Il tentativo viene contato **prima** del calcolo dell'hash: chiudere l'app durante la verifica non lo annulla.
 
 ### 5.3 Biometria
 
 - Opzionale. Si attiva dopo l'impostazione del PIN, con una proposta al primo avvio e un interruttore nelle Impostazioni.
 - Sblocco con `LAContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, ...)`.
-- **Cambio delle impronte o dei volti registrati:**
-  - all'attivazione si salva nel Keychain `evaluatedPolicyDomainState`;
-  - se al login il valore è diverso, la biometria viene disattivata e l'app chiede il PIN, poi propone di riattivarla.
+- Lo sblocco legge un token dal Keychain protetto con `.biometryCurrentSet`, invece di fidarsi del solo esito di `evaluatePolicy`: decide il Secure Enclave, e lo stesso meccanismo potrà custodire la chiave di cifratura (§ 5.6).
+- **Cambio delle impronte o dei volti registrati:** il sistema cancella il token; la biometria viene disattivata e l'app chiede il PIN, poi propone di riattivarla.
 - In Info.plist: `NSFaceIDUsageDescription` = "Usa Face ID per sbloccare i tuoi dati finanziari."
 
 ### 5.4 Ciclo di vita del blocco
@@ -159,11 +181,11 @@ Il database resta aperto per tutta la sessione. Il blocco agisce sulla **UI**: f
 
 - **Posizione del file:** `Application Support/<bundle-id>/homefinances.sqlite`, con WAL attivo (`DatabasePool`).
 - **iOS/iPadOS:** classe Data Protection di default (`completeUntilFirstUserAuthentication`).
-- **Backup di sistema** (iCloud/Finder su iOS, Time Machine su Mac): il database **è incluso** **[DA CONFERMARE]**.
+- **Backup di sistema** (iCloud/Finder su iOS, Time Machine su Mac): il database è incluso di default, e l'utente può escluderlo nelle Impostazioni. L'esclusione vale per l'intera cartella del database, comprese le copie di sicurezza, e non tocca i backup già fatti. L'app non cifra i dati: la protezione dipende da quella dei backup.
 - **Ripristino su un nuovo dispositivo:**
   - l'hash del PIN è `ThisDeviceOnly` e quindi non viene ripristinato;
   - se l'app trova un database ma nessun PIN, chiede di autenticarsi con il codice del dispositivo (`.deviceOwnerAuthentication`), poi fa impostare un nuovo PIN.
-- **Export compliance App Store:** senza SQLCipher l'app usa crittografia solo per l'hash del PIN. Con ogni probabilità `ITSAppUsesNonExemptEncryption = NO`, da verificare al momento della pubblicazione.
+- **Export compliance App Store:** l'app usa crittografia per l'hash del PIN e per cifrare i file di export con password (AES-GCM di CryptoKit). `ITSAppUsesNonExemptEncryption` è impostato a `NO`, ma con la cifratura dei file **va ricontrollato al momento della pubblicazione**, secondo le regole di Apple sull'esportazione.
 
 ### 5.6 Predisposizione per la cifratura futura
 
@@ -188,9 +210,9 @@ Per aggiungere SQLCipher in seguito senza riscrivere nulla:
 ### 6.1 Convenzioni
 
 - **ID:** UUID come `TEXT` su ogni tabella, stabili anche in vista di una futura sincronizzazione.
-- **Importi:** `INTEGER` in **unità minori** (centesimi), sempre positivi. Il segno dipende dal `type`. Nell'app si usa `Decimal`. **Mai `Double`.**
+- **Importi:** `INTEGER` in **unità minori** (centesimi), sempre positivi. Il segno dipende dal `kind`. Nell'app si usa `Decimal`. **Mai `Double`.** La scala è fissa a 100 per ogni valuta, coerente con il limite di 2 decimali dell'editor: valute con 3 decimali non sono rappresentabili in v1.
 - **Valuta:** codice ISO 4217 (`EUR`). **In v1 una sola valuta per tutta l'app**, scelta al primo avvio (default dalla `Locale`) **[DA CONFERMARE]**. Lo schema salva comunque la valuta per non precludere il multi-valuta.
-- **Data dell'operazione:** **data di calendario** `TEXT` `YYYY-MM-DD`, senza fuso orario, così un'operazione non cambia mese viaggiando.
+- **Data dell'operazione:** **data di calendario** gregoriana `TEXT` `YYYY-MM-DD`, senza fuso orario, così un'operazione non cambia mese viaggiando. Resta gregoriana anche se il dispositivo usa un altro calendario.
 - **Timestamp tecnici** (`created_at`, `updated_at`): `TEXT` ISO 8601 in UTC.
 - **Cancellazioni:** fisiche in v1. Le categorie si **archiviano** invece di essere cancellate, se hanno operazioni collegate.
 
@@ -247,6 +269,7 @@ CREATE TABLE app_metadata (
 --   database_id        UUID generato alla creazione del DB (identifica la "storia" dei dati)
 --   last_modified_at   ISO 8601 UTC, aggiornato a ogni scrittura su account/category/operation
 --   last_modified_by   nome del dispositivo che ha fatto l'ultima modifica
+--   seeded_at          ISO 8601 UTC, quando sono stati inseriti i dati iniziali
 ```
 
 - `last_modified_at` e `last_modified_by` sono aggiornati dal repository nella **stessa transazione** di ogni scrittura.
@@ -311,12 +334,10 @@ App
 
 Le HIG riservano la tab bar alla **navigazione tra sezioni**, non alle azioni. Due opzioni:
 
-- **Opzione A — conforme alle HIG (consigliata) [DA CONFERMARE]**
+- **Opzione A — conforme alle HIG (scelta)**
   - Tab bar con due soli tab: Home e Storico.
   - Pulsante "+" (`plus`) come `ToolbarItem(placement: .primaryAction)` in Home e Storico.
-  - Su iOS/iPadOS 26+: pulsante "Nuova operazione" in `tabViewBottomAccessory`, sopra la tab bar, sempre a portata di pollice.
-  - Su iOS 18: solo il "+" in toolbar e l'aggiunta rapida in Home.
-- **Opzione B — "+" al centro della tab bar (richiesta originale)**
+- **Opzione B — "+" al centro della tab bar (richiesta originale, scartata)**
   - Tab centrale "finto" con icona `plus.circle.fill`. Alla selezione si apre lo sheet e si torna al tab precedente.
   - **Solo su iPhone** (size class compatta). Su iPad e Mac si applica comunque l'Opzione A, perché una voce-azione in sidebar non è accettabile.
   - Ordine dei tab: Home · [+] · Storico.
@@ -325,7 +346,7 @@ In entrambi i casi su Mac c'è la voce di menu **File › Nuova operazione** con
 
 ### 7.3 Implementazione della navigazione
 
-- **Router di app** `@Observable AppRouter`, iniettato nell'`Environment`:
+- **Router di app** `@Observable AppRouter`, definito in `Core` e iniettato nell'`Environment`:
   - `selectedTab: AppTab` (`.home`, `.history`);
   - `editor: EditorRequest?`, con `EditorRequest` = `.new(kind: OperationKind?)` oppure `.edit(OperationID)`;
   - `historyPath: [HistoryRoute]`.
@@ -334,7 +355,7 @@ In entrambi i casi su Mac c'è la voce di menu **File › Nuova operazione** con
 - **"Vedi tutte"** in Home: `selectedTab = .history`, segmento Operazioni, `historyPath = []`.
 - **Storico:**
   - compatto (iPhone): `NavigationStack(path:)`;
-  - regolare (iPad/Mac): `NavigationSplitView`, con elenco nella colonna `content` e dettaglio nella colonna `detail`.
+  - regolare: su iPad `NavigationSplitView`, con l'elenco in una colonna e il dettaglio nella colonna `detail`; su Mac due colonne affiancate a mano, ridimensionabili, perché la split view annidata nella sidebar dell'app sposta il dettaglio. In entrambi i casi il primo elemento di `historyPath` è la riga selezionata. Su iPad il resto è lo stack del dettaglio; su Mac il dettaglio mostra direttamente l'ultimo elemento, con un tasto indietro.
 - **Stato ripristinabile:** tab selezionato e segmento dello Storico salvati con `@SceneStorage`. Al ritorno dal blocco l'utente ritrova la stessa posizione, ma il dettaglio viene ricaricato dal DB.
 
 ### 7.4 Adattamento per piattaforma
@@ -344,7 +365,7 @@ In entrambi i casi su Mac c'è la voce di menu **File › Nuova operazione** con
 | Navigazione principale | Tab bar in basso | Tab bar in alto, comprimibile in sidebar | Sidebar |
 | Storico | Stack: elenco → dettaglio | `NavigationSplitView` | `NavigationSplitView`, colonne ridimensionabili |
 | Editor | Sheet `.large` | Sheet `.formSheet` | Sheet sulla finestra |
-| Impostazioni | Ingranaggio in toolbar Home → sheet | Come iPhone | Scena `Settings` (⌘,) |
+| Impostazioni | Ingranaggio in toolbar Home → sheet | Come iPhone | Finestra propria (⌘,), non la scena `Settings`, che centra il tasto indietro |
 | Blocco | Overlay a tutto schermo | Overlay a tutto schermo | Overlay sulla finestra + ⌃⌘L |
 | Scorciatoie | — | Tastiera esterna: ⌘N, ⌘F | ⌘N nuova, ⌘F cerca, ⌘1/⌘2 cambia sezione, ⌫ elimina selezione, ⇧⌘E esporta DB, ⇧⌘I importa DB |
 | Multi-finestra | No | No in v1 | Una sola finestra principale in v1 (`Window`, non `WindowGroup`) **[DA CONFERMARE]** |
@@ -358,9 +379,10 @@ In entrambi i casi su Mac c'è la voce di menu **File › Nuova operazione** con
 **Primo avvio (onboarding, 3 passi):**
 1. Benvenuto con una spiegazione breve su privacy e dati solo locali.
 2. Impostazione del PIN a 6 cifre (inserimento + conferma).
-3. Proposta di attivare Face ID / Touch ID (Attiva / Non ora) e scelta della valuta.
+3. Proposta di attivare Face ID / Touch ID (Attiva / Non ora).
+4. Scelta della valuta, dopo lo sblocco, che inserisce i dati iniziali.
 
-Al termine: salvataggio dell'hash del PIN, creazione del DB, migrazione `v1` e inserimento dei dati iniziali.
+Il database viene aperto e migrato all'avvio. Il passo della valuta compare finché il database non ha i dati iniziali: se l'app viene chiusa a metà onboarding, viene riproposto al riavvio dopo lo sblocco con il PIN già scelto.
 
 **Avvii successivi:**
 - Se la biometria è attiva, il prompt biometrico parte **automaticamente** quando appare la schermata.
@@ -438,13 +460,14 @@ Al termine: salvataggio dell'hash del PIN, creazione del DB, migrazione `v1` e i
 | Campo | Controllo | Default | Validazione |
 |---|---|---|---|
 | Tipo | `Picker` a segmenti Uscita / Entrata | Uscita, oppure quello passato dall'aggiunta rapida | Obbligatorio |
-| Importo | Campo grande, tastierino decimale, **focus automatico** all'apertura | Vuoto | > 0, al massimo 2 decimali |
+| Importo | Campo grande, tastierino decimale, **nessun focus automatico**: la tastiera si apre solo toccando il campo | Vuoto | > 0, al massimo 2 decimali |
 | Categoria | Griglia o elenco di icone filtrato per tipo | Ultima usata per quel tipo | Obbligatoria, coerente col tipo |
 | Data | `DatePicker` (solo data) | Oggi | Nessun limite in v1 |
 | Conto | `Picker` (nascosto se esiste un solo conto) | Conto principale | Obbligatorio |
 | Nota | `TextField` multilinea | Vuota | Facoltativa, massimo 200 caratteri |
 
 **Comportamento:**
+- Tastiera su iOS/iPadOS: si chiude trascinando il modulo verso il basso, fino al bordo della tastiera.
 - Se cambia il tipo, la categoria viene azzerata quando non è compatibile.
 - Uscita con modifiche non salvate (Annulla o swipe giù): `confirmationDialog` "Scartare le modifiche?". Si usa `interactiveDismissDisabled` quando il modulo è stato modificato.
 - Dopo il salvataggio: chiusura dello sheet + feedback aptico di successo. Home e Storico si aggiornano da soli tramite observation.
@@ -455,8 +478,8 @@ Al termine: salvataggio dell'hash del PIN, creazione del DB, migrazione `v1` e i
 | Sezione | Voci |
 |---|---|
 | Sicurezza | Sblocco con Face ID/Touch ID (switch), Cambia PIN, Blocco automatico (solo Mac: 1/5/15/30 min) |
-| Dati | Gestisci categorie, Gestisci conti, Esporta database, Importa database, Annulla ultimo import, Esporta CSV (§ 10) |
-| Generale | Valuta (in sola lettura dopo la prima operazione in v1) |
+| Dati | Gestisci categorie, Gestisci conti, Esporta database, Importa database, Annulla ultimo import, Esporta CSV (§ 10), Includi nei backup di sistema (§ 5.5) |
+| Generale | Valuta (sempre in sola lettura in v1) |
 | Informazioni | Versione, privacy ("I tuoi dati non lasciano mai questo dispositivo") |
 
 - **Cambia PIN:** chiede il PIN attuale e quello nuovo (con conferma). Poi salva nel Keychain un nuovo salt e il nuovo hash, e azzera il contatore dei tentativi.
@@ -478,7 +501,7 @@ Al termine: salvataggio dell'hash del PIN, creazione del DB, migrazione `v1` e i
   - il colore non è mai l'unico indicatore: il segno +/− è sempre presente.
 - **Dark mode** supportata nativamente.
 - **Feedback aptico** (`sensoryFeedback`): successo al salvataggio, errore sul PIN sbagliato.
-- **Localizzazione:** italiano come lingua base, struttura pronta per l'inglese. Importi e date sempre formattati con la `Locale`.
+- **Localizzazione:** italiano come lingua base. Importi e date sempre formattati con la `Locale`. Tutti i testi passano da chiavi localizzabili e, a runtime, vengono cercati nel catalogo dell'app. Xcode però non estrae da solo le stringhe dei pacchetti: per aggiungere l'inglese vanno inserite nel catalogo, a mano o con un catalogo per modulo.
 - **Privacy nello switcher:** overlay sfocato quando `scenePhase == .inactive` (§ 5.5).
 
 ---
@@ -496,7 +519,12 @@ Al termine: salvataggio dell'hash del PIN, creazione del DB, migrazione `v1` e i
 
 ### 10.2 Formato del file
 
-- **Estensione:** `.homefinances`. È un file SQLite standard, apribile con qualsiasi strumento SQLite.
+- **Estensione:** `.homefinances`. Senza password è un file SQLite standard, apribile con qualsiasi strumento SQLite.
+- **Con password:** `magic HFENCDB1 (8 byte) | iterazioni (4) | salt (16) | nonce + dati cifrati + tag`.
+  - AES-256-GCM (CryptoKit), con l'intestazione autenticata: un file manomesso non si apre;
+  - chiave derivata con PBKDF2-HMAC-SHA256, 1.000.000 di iterazioni, salt casuale;
+  - le iterazioni le dichiara il file, che non è attendibile: oltre 10.000.000 viene rifiutato;
+  - la password viene normalizzata in forma Unicode canonica, così funziona uguale su dispositivi diversi.
 - **Tipo di file (UTType):**
   - dichiarato come **Exported Type** in Info.plist, per esempio `it.<nomesviluppatore>.homefinances.database`;
   - conforme a `public.database` e `public.data`.
@@ -514,9 +542,10 @@ Al termine: salvataggio dell'hash del PIN, creazione del DB, migrazione `v1` e i
   1. copia consistente del DB in un file temporaneo con l'API di backup di GRDB (`try dbPool.backup(to: destinationQueue)`), sicura anche con l'app in uso;
   2. `VACUUM` sulla copia, per un file compatto e senza WAL separato;
   3. consegna all'utente:
-     - **iOS/iPadOS:** `ShareLink`, che include AirDrop, Salva su File, Mail e Messaggi;
-     - **macOS:** `fileExporter`, cioè il pannello Salva.
-- **Avviso** prima dell'export (mostrato finché l'utente non sceglie "Non mostrare più"): "Il file contiene tutti i tuoi dati finanziari e non è protetto da password. Conservalo e invialo solo in modo sicuro."
+     - **iOS/iPadOS:** foglio di condivisione di sistema, che include AirDrop, Salva su File, Mail e Messaggi. Non `ShareLink`, che non segnala quando ha finito;
+     - **macOS:** `fileMover`, cioè il pannello Salva, che sposta il file temporaneo dove sceglie l'utente.
+- **Opzioni** prima dell'export: "Proteggi con password", attiva di default. Password di almeno 8 caratteri, con conferma. Non è recuperabile: se viene dimenticata, il file non si apre più.
+- **Avviso** se si disattiva la protezione: "Il file contiene tutti i tuoi dati finanziari e non è protetto da password. Conservalo e invialo solo in modo sicuro."
 - Dopo l'export, il file temporaneo viene cancellato.
 
 ### 10.4 Import
@@ -529,10 +558,11 @@ Al termine: salvataggio dell'hash del PIN, creazione del DB, migrazione `v1` e i
 
 **Procedura:**
 
-1. Copia del file scelto in una cartella temporanea dell'app (con `startAccessingSecurityScopedResource` se serve).
+1. Copia del file scelto in una cartella temporanea dell'app (con `startAccessingSecurityScopedResource` se serve). Se il file è protetto si chiede la password e lo si decifra; con una password errata si può riprovare.
 2. **Validazione** del file copiato, aperto in sola lettura:
-   - è un database SQLite valido e `PRAGMA integrity_check` restituisce `ok`;
+   - è un database SQLite valido, `PRAGMA integrity_check` restituisce `ok` e `foreign_key_check` non trova errori;
    - contiene le tabelle attese e `app_metadata`;
+   - il file non è attendibile: si rifiuta se contiene trigger o viste, che eseguirebbero codice del file, se a parità di versione lo schema è diverso da quello dell'app, o se una riga non è leggibile;
    - versione dello schema:
      - **uguale o precedente** → accettato; le migrazioni si eseguono dopo l'import;
      - **più recente** di quella dell'app → rifiutato con il messaggio "Questo file è stato creato da una versione più recente dell'app. Aggiorna l'app e riprova."
@@ -565,12 +595,13 @@ Al termine: salvataggio dell'hash del PIN, creazione del DB, migrazione `v1` e i
 - Impostazioni › Dati › **Esporta CSV**, per l'uso in Excel o Numbers.
 - Campi: `data;tipo;importo;valuta;categoria;conto;nota`, separatore `;`, UTF-8 con BOM, importi con la virgola decimale.
 - Non è reimportabile: per spostare i dati tra dispositivi si usa il file `.homefinances`.
+- Un testo che inizia con `=`, `+`, `-` o `@` viene preceduto da `'`, perché Excel lo eseguirebbe come formula.
 
 ### 10.6 Fuori scope v1
 
 - Unione (merge) di due database. Gli UUID e `updated_at` su ogni riga la rendono possibile in futuro.
 - Import da CSV o estratti conto bancari.
-- File di export protetto da password.
+- Protezione con password del CSV e delle copie di sicurezza interne.
 
 ---
 
@@ -605,7 +636,7 @@ Al termine: salvataggio dell'hash del PIN, creazione del DB, migrazione `v1` e i
 
 **Prova manuale di sincronizzazione:** export da iPhone → AirDrop → import su Mac, e ritorno dal Mac all'iPad tramite iCloud Drive.
 
-**UI test (XCUITest):**
+**Prove manuali dell'interfaccia** (nessun UI test automatico, per scelta):
 - onboarding;
 - inserimento di un'operazione da Home → presenza in Storico;
 - navigazione Anni → Mesi → Operazioni;
@@ -650,10 +681,10 @@ Al termine: salvataggio dell'hash del PIN, creazione del DB, migrazione `v1` e i
 
 | # | Decisione | Proposta |
 |---|---|---|
-| 1 | Posizione del pulsante "Nuova operazione" | **Opzione A** (toolbar + accessorio tab bar), conforme alle HIG |
+| 1 | ~~Posizione del pulsante "Nuova operazione"~~ | **Decisa:** Opzione A (solo toolbar, senza accessorio sopra la tab bar), conforme alle HIG |
 | 2 | Valuta | Una sola valuta per tutta l'app in v1 |
-| 3 | Cancellazione dei dati dopo N PIN errati | No in v1 |
+| 3 | ~~Cancellazione dei dati dopo N PIN errati~~ | **Decisa:** no in v1 |
 | 4 | Multi-finestra su Mac | No in v1 |
-| 5 | Ultime 3 operazioni in Home: assolute o del mese selezionato | Assolute |
+| 5 | ~~Ultime 3 operazioni in Home: assolute o del mese selezionato~~ | **Decisa:** assolute |
 | 6 | ~~Libreria di accesso dati~~ | **Decisa:** SQLite + GRDB diretto |
-| 7 | Database incluso nel backup di sistema | Sì: così i dati non si perdono cambiando dispositivo |
+| 7 | ~~Database incluso nel backup di sistema~~ | **Decisa:** a scelta dell'utente nelle Impostazioni, incluso di default |

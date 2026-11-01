@@ -1,0 +1,6 @@
+// Modello per Local.xcconfig (ignorato da git).
+//
+// Il Team ID si trova in Xcode › Settings › Accounts, oppure su developer.apple.com › Membership.
+// Serve anche su Mac: senza Team il Keychain risponde -34018 (§ 5.2).
+
+DEVELOPMENT_TEAM =
