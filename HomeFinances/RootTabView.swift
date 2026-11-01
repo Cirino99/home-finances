@@ -61,16 +61,12 @@ struct RootTabView: View {
 }
 
 private extension View {
-    /// Su iOS/iPadOS 26+: pulsante sopra la tab bar, sempre a portata di pollice (§ 7.2).
+    /// Su iOS/iPadOS: pulsante sopra la tab bar, sempre a portata di pollice (§ 7.2).
     @ViewBuilder
     func newOperationAccessory(action: @escaping () -> Void) -> some View {
         #if os(iOS)
-        if #available(iOS 26, *) {
-            tabViewBottomAccessory {
-                Button("Nuova operazione", systemImage: "plus", action: action)
-            }
-        } else {
-            self
+        tabViewBottomAccessory {
+            Button("Nuova operazione", systemImage: "plus", action: action)
         }
         #else
         self

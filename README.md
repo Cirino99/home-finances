@@ -4,8 +4,9 @@
 
 > Documento base per lo sviluppo. Raccoglie le decisioni prese su piattaforme, stack, sicurezza, modello dati, navigazione e schermate.
 > Le voci marcate **[DA CONFERMARE]** sono proposte non ancora approvate.
-> Versione 1.6 — 1 novembre 2026
+> Versione 1.7 — 1 novembre 2026
 > **Modifiche:**
+> - 1.7 — il progetto punta all'ultima versione delle piattaforme: minimo iOS/iPadOS/macOS 27, Swift 6.4, GRDB 7.11. Niente più fallback per le versioni precedenti.
 > - 1.6 — decisa la #1: Opzione A per "Nuova operazione". `AppRouter` sta in `Core`, così le feature possono usarlo senza dipendere dall'app.
 > - 1.5 — Sprint 2: i protocolli dei repository stanno in `Core`. La valuta si sceglie dopo il primo sblocco, finché il database non ha i dati iniziali. Importi: scala fissa a 100 per ogni valuta.
 > - 1.4 — decisa la #3: nessuna cancellazione dei dati dopo N PIN errati in v1. La scelta della valuta nell'onboarding arriva con lo strato dati (Sprint 2). Biometria: `domainState` al posto di `evaluatedPolicyDomainState`, deprecato.
@@ -31,12 +32,12 @@ Principi guida:
 
 | Piattaforma | Versione minima | Note |
 |---|---|---|
-| iOS (iPhone) | **iOS 18** | Necessario per `TabView` con `.sidebarAdaptable` e la nuova API `Tab` |
-| iPadOS | **iPadOS 18** | Come sopra |
-| macOS | **macOS 15** | App Mac nativa SwiftUI, **non** Mac Catalyst |
+| iOS (iPhone) | **iOS 27** | Ultima versione: nessun fallback per le precedenti |
+| iPadOS | **iPadOS 27** | Come sopra |
+| macOS | **macOS 27** | App Mac nativa SwiftUI, **non** Mac Catalyst |
 
-- Linguaggio: **Swift 6** con strict concurrency attiva.
-- Funzionalità di iOS/iPadOS/macOS 26, come `tabViewBottomAccessory` e Liquid Glass, si usano dietro `if #available(...)`, con un fallback per le versioni 18/15.
+- Linguaggio: **Swift 6.4** (Xcode 27.2), modalità Swift 6 con strict concurrency attiva.
+- Il progetto si scrive per l'ultima versione delle piattaforme: si usano direttamente le API più recenti, come `tabViewBottomAccessory` e Liquid Glass, senza `if #available(...)`. Quando esce una nuova versione maggiore, si aggiornano minimi e toolchain.
 - Un unico target Xcode multipiattaforma ("Multiplatform App").
 
 ---
@@ -47,7 +48,7 @@ Principi guida:
 |---|---|---|
 | UI | **SwiftUI** + Observation (`@Observable`) | Codice unico per le tre piattaforme |
 | Database | **SQLite** (versione di sistema) | Locale, nessun server, aggregati calcolati in SQL |
-| Accesso dati | **GRDB.swift** 7.x tramite Swift Package Manager (pacchetto standard) | Migrazioni, record tipizzati, `ValueObservation` per una UI reattiva |
+| Accesso dati | **GRDB.swift** 7.11 tramite Swift Package Manager (pacchetto standard) | Migrazioni, record tipizzati, `ValueObservation` per una UI reattiva |
 | Hash del PIN | **CommonCrypto** (PBKDF2-HMAC-SHA256) | Il PIN non viene mai salvato in chiaro |
 | Segreti | **Keychain Services** | Conservazione dell'hash del PIN e del contatore dei tentativi |
 | Autenticazione | **LocalAuthentication** | Face ID / Touch ID |
@@ -150,7 +151,7 @@ Pattern:
 - Opzionale. Si attiva dopo l'impostazione del PIN, con una proposta al primo avvio e un interruttore nelle Impostazioni.
 - Sblocco con `LAContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, ...)`.
 - **Cambio delle impronte o dei volti registrati:**
-  - all'attivazione si salva nel Keychain `LAContext.domainState.biometry.stateHash` (sostituisce `evaluatedPolicyDomainState`, deprecato da iOS 18 / macOS 15);
+  - all'attivazione si salva nel Keychain `LAContext.domainState.biometry.stateHash`;
   - se al login il valore è diverso, la biometria viene disattivata e l'app chiede il PIN, poi propone di riattivarla.
 - In Info.plist: `NSFaceIDUsageDescription` = "Usa Face ID per sbloccare i tuoi dati finanziari."
 
@@ -327,8 +328,7 @@ Le HIG riservano la tab bar alla **navigazione tra sezioni**, non alle azioni. D
 - **Opzione A — conforme alle HIG (scelta)**
   - Tab bar con due soli tab: Home e Storico.
   - Pulsante "+" (`plus`) come `ToolbarItem(placement: .primaryAction)` in Home e Storico.
-  - Su iOS/iPadOS 26+: pulsante "Nuova operazione" in `tabViewBottomAccessory`, sopra la tab bar, sempre a portata di pollice.
-  - Su iOS 18: solo il "+" in toolbar e l'aggiunta rapida in Home.
+  - Su iOS/iPadOS: pulsante "Nuova operazione" in `tabViewBottomAccessory`, sopra la tab bar, sempre a portata di pollice.
 - **Opzione B — "+" al centro della tab bar (richiesta originale, scartata)**
   - Tab centrale "finto" con icona `plus.circle.fill`. Alla selezione si apre lo sheet e si torna al tab precedente.
   - **Solo su iPhone** (size class compatta). Su iPad e Mac si applica comunque l'Opzione A, perché una voce-azione in sidebar non è accettabile.

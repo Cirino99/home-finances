@@ -1,12 +1,12 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.4
 import PackageDescription
 
 let package = Package(
     name: "HomeFinancesKit",
     defaultLocalization: "it",
     platforms: [
-        .iOS(.v18),
-        .macOS(.v15),
+        .iOS(.v27),
+        .macOS(.v27),
     ],
     products: [
         .library(
@@ -25,7 +25,7 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.11.1"),
     ],
     targets: [
         // Modelli di dominio e regole: nessuna dipendenza.

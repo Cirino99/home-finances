@@ -41,7 +41,6 @@ public struct SystemBiometricAuthenticator: BiometricAuthenticator {
         guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil) else {
             return nil
         }
-        // Sostituisce `evaluatedPolicyDomainState`, deprecato da iOS 18 / macOS 15.
         return context.domainState.biometry.stateHash
     }
 
