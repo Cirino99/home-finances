@@ -5,6 +5,8 @@ DerivedData/
 .swiftpm/
 *.xcuserstate
 Config/Local.xcconfig
+# Xcode usa quello in xcshareddata; questo lo crea `swift test` da terminale.
+Packages/Package.resolved
 
 # File con dati finanziari: export, CSV e database non devono mai finire nel repository.
 *.homefinances
