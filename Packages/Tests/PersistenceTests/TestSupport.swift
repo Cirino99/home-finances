@@ -65,11 +65,102 @@ struct Fixture {
             note: note
         ))
     }
+
+    /// Operazione su un conto diverso da quello iniziale.
+    @discardableResult
+    func addOperation(
+        _ kind: OperationKind,
+        amount: Int64,
+        on date: String,
+        account: Account
+    ) async throws -> FinanceOperation {
+        try await database.operations.create(OperationDraft(
+            kind: kind,
+            amount: amount,
+            date: try #require(Day(string: date)),
+            accountID: account.id,
+            categoryID: kind == .expense ? expenseCategory.id : incomeCategory.id
+        ))
+    }
+
+    func addAccount(
+        _ name: String = "Risparmi",
+        currency: String = "EUR",
+        initialBalance: Int64 = 0
+    ) async throws -> Account {
+        try await database.accounts.create(name: name, currency: currency, initialBalance: initialBalance)
+    }
+
+    @discardableResult
+    func addTransfer(
+        amount: Int64,
+        on date: String,
+        from: Account,
+        to: Account,
+        note: String? = nil
+    ) async throws -> AccountTransfer {
+        try await database.transfers.create(TransferDraft(
+            amount: amount,
+            date: try #require(Day(string: date)),
+            fromAccountID: from.id,
+            toAccountID: to.id,
+            note: note
+        ))
+    }
+
+    func movements(_ query: MovementQuery = MovementQuery()) async throws -> [MovementListItem] {
+        try #require(try await database.movements.observeMovements(query).firstValue())
+    }
+
+    func balances() async throws -> [AccountBalance] {
+        try #require(try await database.movements.observeBalances().firstValue())
+    }
 }
 
 extension AsyncThrowingStream {
     /// Primo valore emesso: il valore attuale al momento dell'osservazione.
     func firstValue() async throws -> Element? {
         try await first { _ in true }
+    }
+}
+
+/// Dati scritti come li avrebbe scritti la versione con la sola migrazione `v1`: un conto,
+/// una categoria di uscita e `operations` uscite da 1 euro a gennaio 2026.
+enum Version1Data {
+    static let timestamp = "2026-01-01T00:00:00.000Z"
+
+    static func insert(operations: Int, in db: Database) throws {
+        let accountID = UUID().uuidString
+        let categoryID = UUID().uuidString
+        try db.execute(
+            sql: "INSERT INTO app_metadata (key, value) VALUES ('seeded_at', ?)",
+            arguments: [timestamp]
+        )
+        try db.execute(
+            sql: """
+                INSERT INTO account (id, name, currency, created_at, updated_at)
+                VALUES (?, 'Conto principale', 'EUR', ?, ?)
+                """,
+            arguments: [accountID, timestamp, timestamp]
+        )
+        try db.execute(
+            sql: """
+                INSERT INTO category (id, name, kind, symbol, color, created_at, updated_at)
+                VALUES (?, 'Spesa', 'expense', 'cart', 'green', ?, ?)
+                """,
+            arguments: [categoryID, timestamp, timestamp]
+        )
+        for day in 0..<operations {
+            try db.execute(
+                sql: """
+                    INSERT INTO operation (id, kind, amount, currency, date, account_id, category_id, created_at, updated_at)
+                    VALUES (?, 'expense', 100, 'EUR', ?, ?, ?, ?, ?)
+                    """,
+                arguments: [
+                    UUID().uuidString, String(format: "2026-01-%02d", day + 1),
+                    accountID, categoryID, timestamp, timestamp,
+                ]
+            )
+        }
     }
 }

@@ -75,6 +75,14 @@ public final class AppDatabase: Sendable {
         GRDBAccountRepository(database: self)
     }
 
+    public var transfers: any TransferRepository {
+        GRDBTransferRepository(database: self)
+    }
+
+    public var movements: any MovementRepository {
+        GRDBMovementRepository(database: self)
+    }
+
     // MARK: Dati iniziali
 
     /// `true` se il database contiene già dati: distingue un'installazione nuova
@@ -158,7 +166,7 @@ public final class AppDatabase: Sendable {
         }
     }
 
-    /// Da chiamare nella stessa transazione di ogni scrittura su account, category e operation (§ 6.2).
+    /// Da chiamare nella stessa transazione di ogni scrittura su account, category, operation e transfer (§ 6.2).
     func touchMetadata(_ db: Database, timestamp: String) throws {
         try db.execute(
             sql: "INSERT OR REPLACE INTO app_metadata (key, value) VALUES (?, ?), (?, ?)",
@@ -246,6 +254,28 @@ public final class AppDatabase: Sendable {
                 sql: "INSERT INTO app_metadata (key, value) VALUES (?, ?)",
                 arguments: [MetadataKey.databaseID, UUID().uuidString]
             )
+        }
+
+        // Trasferimenti tra conti (§ 6.2). Non sono entrate né uscite: tabella propria.
+        migrator.registerMigration("v2") { db in
+            try db.execute(sql: """
+                CREATE TABLE transfer (
+                    id               TEXT PRIMARY KEY NOT NULL,
+                    amount           INTEGER NOT NULL CHECK (amount > 0),
+                    currency         TEXT NOT NULL,
+                    date             TEXT NOT NULL,
+                    from_account_id  TEXT NOT NULL REFERENCES account(id) ON DELETE RESTRICT,
+                    to_account_id    TEXT NOT NULL REFERENCES account(id) ON DELETE RESTRICT,
+                    note             TEXT,
+                    created_at       TEXT NOT NULL,
+                    updated_at       TEXT NOT NULL,
+                    CHECK (from_account_id <> to_account_id)
+                );
+
+                CREATE INDEX idx_transfer_date ON transfer(date DESC, created_at DESC);
+                CREATE INDEX idx_transfer_from ON transfer(from_account_id);
+                CREATE INDEX idx_transfer_to   ON transfer(to_account_id);
+                """)
         }
         return migrator
     }

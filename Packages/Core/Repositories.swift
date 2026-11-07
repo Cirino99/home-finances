@@ -53,7 +53,7 @@ public protocol AccountRepository: Sendable {
     func setArchived(_ id: AccountID, isArchived: Bool) async throws
     /// L'ordine dell'array diventa `sort_order`.
     func reorder(_ ids: [AccountID]) async throws
-    /// Cancella il conto, o lo archivia se ha operazioni collegate.
+    /// Cancella il conto, o lo archivia se ha operazioni o trasferimenti collegati.
     /// Lancia `lastActiveAccount` se è l'ultimo conto attivo.
     func remove(_ id: AccountID) async throws -> RemovalOutcome
 

@@ -82,6 +82,78 @@ struct SchemaTests {
         }
     }
 
+    @Test func migrationCreatesTransferTable() throws {
+        let database = try AppDatabase.inMemory()
+        try database.writer.read { db in
+            #expect(try db.tableExists("transfer"))
+            let indexes = try db.indexes(on: "transfer").map(\.name)
+            for index in ["idx_transfer_date", "idx_transfer_from", "idx_transfer_to"] {
+                #expect(indexes.contains(index), "Manca l'indice \(index)")
+            }
+        }
+        #expect(AppDatabase.migrator.migrations == ["v1", "v2"])
+    }
+
+    @Test func databaseEnforcesTransferChecks() async throws {
+        let fixture = try await Fixture()
+        let other = try await fixture.addAccount()
+        let insert = """
+            INSERT INTO transfer (id, amount, currency, date, from_account_id, to_account_id, created_at, updated_at)
+            VALUES (?, ?, 'EUR', '2026-11-07', ?, ?, 'x', 'x')
+            """
+        let cases: [(Int64, AccountID, AccountID)] = [
+            (0, fixture.account.id, other.id),
+            (-1, fixture.account.id, other.id),
+            (100, fixture.account.id, fixture.account.id),
+            (100, fixture.account.id, AccountID()),
+        ]
+        for (amount, from, to) in cases {
+            #expect(throws: DatabaseError.self) {
+                try fixture.execute(insert, arguments: [UUID().uuidString, amount, from.databaseValue, to.databaseValue])
+            }
+        }
+    }
+
+    @Test func transfersRestrictAccountDeletion() async throws {
+        let fixture = try await Fixture()
+        let from = try await fixture.addAccount("Da")
+        let to = try await fixture.addAccount("A")
+        try await fixture.addTransfer(amount: 100, on: "2026-11-07", from: from, to: to)
+
+        for account in [from, to] {
+            #expect(throws: DatabaseError.self) {
+                try fixture.execute("DELETE FROM account WHERE id = ?", arguments: [account.id.databaseValue])
+            }
+        }
+    }
+
+    /// Un database creato dalla versione precedente si aggiorna all'apertura senza perdere dati.
+    @Test func migratesVersion1DatabaseKeepingData() async throws {
+        let folder = FileManager.default.temporaryDirectory
+            .appending(path: "SchemaTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appending(path: AppDatabase.fileName)
+
+        let queue = try DatabaseQueue(path: url.path)
+        try AppDatabase.migrator.migrate(queue, upTo: "v1")
+        try queue.inDatabase { db in
+            try Version1Data.insert(operations: 2, in: db)
+        }
+        try queue.close()
+
+        let database = try AppDatabase.open(at: url)
+        let applied = try await database.writer.read { db in
+            try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations ORDER BY identifier")
+        }
+        #expect(applied == ["v1", "v2"])
+        #expect(try await database.operations.allItems().count == 2)
+        #expect(try await database.movements.allMovements().count == 2)
+
+        let balances = try #require(try await database.movements.observeBalances().firstValue())
+        #expect(balances.map(\.balance) == [-200])
+    }
+
     @Test func idsAreStoredAsText() async throws {
         let fixture = try await Fixture()
         let operation = try await fixture.addOperation(.expense, amount: 100, on: "2026-10-30")

@@ -229,7 +229,8 @@ struct GRDBOperationRepository: OperationRepository {
         return try Row.fetchAll(db, sql: sql, arguments: arguments).map(OperationListItem.init(row:))
     }
 
-    private static func escapingLikeWildcards(_ text: String) -> String {
+    /// `%` e `_` del testo cercato valgono come caratteri normali, non come jolly di `LIKE`.
+    static func escapingLikeWildcards(_ text: String) -> String {
         text
             .replacingOccurrences(of: #"\"#, with: #"\\"#)
             .replacingOccurrences(of: "%", with: #"\%"#)

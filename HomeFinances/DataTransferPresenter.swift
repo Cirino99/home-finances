@@ -160,7 +160,7 @@ struct DataTransferPresenter: ViewModifier {
             run {
                 let count = try await store.undoLastImport()
                 router.resetNavigation()
-                router.transferMessage = String(localized: "Dati ripristinati: \(count) operazioni")
+                router.transferMessage = String(localized: "Dati ripristinati: \(count) movimenti")
             }
         }
     }
@@ -200,7 +200,7 @@ struct DataTransferPresenter: ViewModifier {
         run {
             let count = try await store.performImport(preview)
             router.resetNavigation()
-            router.transferMessage = String(localized: "Dati importati: \(count) operazioni")
+            router.transferMessage = String(localized: "Dati importati: \(count) movimenti")
         }
     }
 

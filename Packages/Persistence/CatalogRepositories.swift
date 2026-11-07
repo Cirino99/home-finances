@@ -47,7 +47,12 @@ struct GRDBCategoryRepository: CategoryRepository {
     }
 
     func remove(_ id: CategoryID) async throws -> RemovalOutcome {
-        try await removeRow(id, table: "category", foreignKey: "category_id", database: database)
+        try await removeRow(
+            id,
+            table: "category",
+            usages: ["SELECT 1 FROM operation WHERE category_id = :id"],
+            database: database
+        )
     }
 
     func observeCategories(includingArchived: Bool) -> AsyncThrowingStream<[OperationCategory], any Error> {
@@ -108,7 +113,16 @@ struct GRDBAccountRepository: AccountRepository {
     }
 
     func remove(_ id: AccountID) async throws -> RemovalOutcome {
-        try await removeRow(id, table: "account", foreignKey: "account_id", database: database) { db in
+        // Anche un conto usato solo da trasferimenti va archiviato, non cancellato (§ 6.1).
+        try await removeRow(
+            id,
+            table: "account",
+            usages: [
+                "SELECT 1 FROM operation WHERE account_id = :id",
+                "SELECT 1 FROM transfer WHERE from_account_id = :id OR to_account_id = :id",
+            ],
+            database: database
+        ) { db in
             try checkNotLastActiveAccount(id, in: db)
         }
     }
@@ -193,22 +207,22 @@ private func reorderRows<Entity>(_ ids: [EntityID<Entity>], table: String, datab
     }
 }
 
-/// Cancella la riga, o la archivia se ha operazioni collegate.
+/// Cancella la riga, o la archivia se è usata da operazioni o trasferimenti.
+/// `usages` sono le condizioni che la trovano collegata, con `:id` al posto dell'identificatore.
 private func removeRow<Entity>(
     _ id: EntityID<Entity>,
     table: String,
-    foreignKey: String,
+    usages: [String],
     database: AppDatabase,
     check: @escaping @Sendable (Database) throws -> Void = { _ in }
 ) async throws -> RemovalOutcome {
     let timestamp = Timestamp.string(database.now())
     return try await database.writer.write { db in
         try check(db)
-        let isUsed = try Row.fetchOne(
-            db,
-            sql: "SELECT 1 FROM operation WHERE \(foreignKey) = ? LIMIT 1",
-            arguments: [id.databaseValue]
-        ) != nil
+        var isUsed = false
+        for usage in usages where !isUsed {
+            isUsed = try Row.fetchOne(db, sql: "\(usage) LIMIT 1", arguments: ["id": id.databaseValue]) != nil
+        }
         let outcome: RemovalOutcome
         if isUsed {
             try db.execute(

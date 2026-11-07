@@ -68,8 +68,8 @@ public struct ImportConfirmationView: View {
     private func summarySection(_ title: LocalizedStringKey, summary: DatabaseSummary) -> some View {
         Section(title) {
             LabeledContent("Ultima modifica", value: lastModifiedText(summary))
-            LabeledContent("Operazioni", value: String(summary.operationCount))
-            LabeledContent("Operazione più recente", value: summary.latestOperationDate.map { DayFormat.long($0) } ?? "—")
+            LabeledContent("Movimenti", value: String(summary.movementCount))
+            LabeledContent("Movimento più recente", value: summary.latestMovementDate.map { DayFormat.long($0) } ?? "—")
         }
     }
 

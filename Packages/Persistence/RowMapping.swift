@@ -98,6 +98,56 @@ extension OperationListItem {
     }
 }
 
+extension AccountTransfer {
+    init(row: Row) throws {
+        self.init(
+            id: try row.entityID("id"),
+            amount: row["amount"],
+            currency: row["currency"],
+            date: try row.day("date"),
+            fromAccountID: try row.entityID("from_account_id"),
+            toAccountID: try row.entityID("to_account_id"),
+            note: row["note"],
+            createdAt: try row.timestamp("created_at"),
+            updatedAt: try row.timestamp("updated_at")
+        )
+    }
+}
+
+extension TransferListItem {
+    init(row: Row) throws {
+        self.init(
+            transfer: try AccountTransfer(row: row),
+            fromAccountName: row["from_account_name"],
+            toAccountName: row["to_account_name"]
+        )
+    }
+}
+
+extension MovementListItem {
+    /// Righe dell'elenco dei movimenti: `movement_type` dice quale delle due forme leggere.
+    init(row: Row) throws {
+        let type: String = row["movement_type"]
+        switch type {
+        case "operation": self = .operation(try OperationListItem(row: row))
+        case "transfer": self = .transfer(try TransferListItem(row: row))
+        default: throw PersistenceError.corruptedValue(column: "movement_type")
+        }
+    }
+}
+
+extension AccountBalance {
+    init(row: Row) throws {
+        self.init(
+            account: try Account(row: row),
+            income: row["income"],
+            expense: row["expense"],
+            received: row["received"],
+            sent: row["sent"]
+        )
+    }
+}
+
 extension EntityID {
     /// Forma salvata nelle colonne `TEXT`.
     var databaseValue: String {

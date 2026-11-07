@@ -102,8 +102,8 @@ struct ImportPreviewTests {
             databaseID: id,
             lastModifiedAt: modified.map { Date(timeIntervalSince1970: $0) },
             lastModifiedBy: nil,
-            operationCount: 0,
-            latestOperationDate: nil
+            movementCount: 0,
+            latestMovementDate: nil
         )
     }
 

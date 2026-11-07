@@ -648,7 +648,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
    - è un database SQLite valido, `PRAGMA integrity_check` restituisce `ok` e `foreign_key_check` non trova errori;
    - contiene le tabelle attese e `app_metadata`. Un file con la sola migrazione `v1` non ha `transfer` ed è accettato: la `v2` si esegue dopo l'import;
    - ogni trasferimento ha conti di origine e destinazione diversi;
-   - il file non è attendibile: si rifiuta se contiene trigger o viste, che eseguirebbero codice del file, se a parità di versione lo schema è diverso da quello dell'app, o se una riga non è leggibile;
+   - il file non è attendibile: si rifiuta se contiene trigger o viste, che eseguirebbero codice del file, se le migrazioni applicate non sono una sequenza iniziale di quelle dell'app, se lo schema è diverso da quello che l'app crea con le stesse migrazioni, o se una riga non è leggibile;
    - versione dello schema:
      - **uguale o precedente** → accettato; le migrazioni si eseguono dopo l'import;
      - **più recente** di quella dell'app → rifiutato con il messaggio "Questo file è stato creato da una versione più recente dell'app. Aggiorna l'app e riprova."
