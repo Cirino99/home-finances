@@ -4,8 +4,9 @@
 
 > Documento base per lo sviluppo. Raccoglie le decisioni prese su piattaforme, stack, sicurezza, modello dati, navigazione e schermate.
 > Le voci marcate **[DA CONFERMARE]** sono proposte non ancora approvate.
-> Versione 1.15 — 1 novembre 2026
+> Versione 1.16 — 7 novembre 2026
 > **Modifiche:**
+> - 1.16 — trasferimenti tra conti e tab Conti, tolti dagli sviluppi futuri (§ 13). Nuova tabella `transfer` con la migrazione `v2` (§ 6.2), saldi dei conti (§ 6.4), tab Conti (§ 7, § 8.7), editor e dettaglio del trasferimento (§ 8.8), Storico con trasferimenti e filtro per conto (§ 8.3), export e CSV (§ 10). Piano e decisioni in [PIANO-CONTI-TRASFERIMENTI.md](PIANO-CONTI-TRASFERIMENTI.md).
 > - 1.15 — le specifiche si spostano da `README.md` a `docs/SPECIFICHE.md`; il README presenta il progetto.
 > - 1.14 — decise: PIN dimenticato con dati presenti non recuperabile; backup di sistema a scelta dell'utente, inclusi di default (§ 5.5).
 > - 1.13 — Sprint 7: VoiceOver e Dynamic Type, testi fissi localizzabili, scorciatoie ⌘F, ⌘1/⌘2 e ⌘N anche su iPad. Niente UI test automatici: quei percorsi si provano a mano (§ 11). La traduzione in inglese richiede ancora un passaggio (§ 9).
@@ -26,7 +27,7 @@
 
 ## 1. Obiettivo
 
-App nativa per la gestione delle finanze personali. Registra entrate e uscite, mostra un riepilogo mensile e uno storico consultabile per operazione, mese e anno.
+App nativa per la gestione delle finanze personali. Registra entrate, uscite e trasferimenti tra conti, mostra un riepilogo mensile, il saldo di ogni conto e uno storico consultabile per operazione, mese e anno.
 
 Principi guida:
 
@@ -96,7 +97,8 @@ HomeFinances.xcodeproj
         ├── Lock/               ← schermata di blocco
         ├── Home/
         ├── History/            ← Storico
-        ├── OperationEditor/    ← Nuova/Modifica operazione
+        ├── Accounts/           ← Conti: saldi e trasferimenti
+        ├── OperationEditor/    ← Nuova/Modifica operazione e trasferimento
         └── Settings/
 ```
 
@@ -215,9 +217,9 @@ Per aggiungere SQLCipher in seguito senza riscrivere nulla:
 - **Valuta:** codice ISO 4217 (`EUR`). **In v1 una sola valuta per tutta l'app**, scelta al primo avvio (default dalla `Locale`) **[DA CONFERMARE]**. Lo schema salva comunque la valuta per non precludere il multi-valuta.
 - **Data dell'operazione:** **data di calendario** gregoriana `TEXT` `YYYY-MM-DD`, senza fuso orario, così un'operazione non cambia mese viaggiando. Resta gregoriana anche se il dispositivo usa un altro calendario.
 - **Timestamp tecnici** (`created_at`, `updated_at`): `TEXT` ISO 8601 in UTC.
-- **Cancellazioni:** fisiche in v1. Le categorie si **archiviano** invece di essere cancellate, se hanno operazioni collegate.
+- **Cancellazioni:** fisiche in v1. Categorie e conti si **archiviano** invece di essere cancellati, se hanno operazioni collegate. Per i conti contano anche i trasferimenti.
 
-### 6.2 Schema (migrazione `v1`)
+### 6.2 Schema (migrazioni `v1` e `v2`)
 
 ```sql
 CREATE TABLE account (
@@ -271,9 +273,29 @@ CREATE TABLE app_metadata (
 --   last_modified_at   ISO 8601 UTC, aggiornato a ogni scrittura su account/category/operation
 --   last_modified_by   nome del dispositivo che ha fatto l'ultima modifica
 --   seeded_at          ISO 8601 UTC, quando sono stati inseriti i dati iniziali
+
+-- Migrazione v2: trasferimenti tra conti. Non è un'entrata né un'uscita.
+CREATE TABLE transfer (
+    id               TEXT PRIMARY KEY NOT NULL,
+    amount           INTEGER NOT NULL CHECK (amount > 0),
+    currency         TEXT NOT NULL,
+    date             TEXT NOT NULL,                  -- YYYY-MM-DD
+    from_account_id  TEXT NOT NULL REFERENCES account(id) ON DELETE RESTRICT,
+    to_account_id    TEXT NOT NULL REFERENCES account(id) ON DELETE RESTRICT,
+    note             TEXT,
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL,
+    CHECK (from_account_id <> to_account_id)
+);
+
+CREATE INDEX idx_transfer_date ON transfer(date DESC, created_at DESC);
+CREATE INDEX idx_transfer_from ON transfer(from_account_id);
+CREATE INDEX idx_transfer_to   ON transfer(to_account_id);
 ```
 
-- `last_modified_at` e `last_modified_by` sono aggiornati dal repository nella **stessa transazione** di ogni scrittura.
+- `last_modified_at` e `last_modified_by` sono aggiornati dal repository nella **stessa transazione** di ogni scrittura, compresa quella su `transfer`.
+- Una migrazione rilasciata non si modifica mai: i cambiamenti arrivano con una migrazione nuova.
+- **Trasferimenti:** tabella propria invece di un tipo nuovo in `operation`, così non serve una categoria finta e gli aggregati di entrate e uscite non cambiano. La valuta è quella del conto di origine; il repository verifica che coincida con quella di destinazione.
 
 - `PRAGMA foreign_keys = ON` all'apertura (GRDB lo attiva di default).
 - **Coerenza tipo/categoria:** `operation.kind` deve coincidere con `category.kind`. Lo verifica il repository, con un test dedicato.
@@ -291,7 +313,8 @@ CREATE TABLE app_metadata (
 | Ultime N operazioni (ordinate per `date DESC, created_at DESC`) | Home (N = 3) |
 | Totali raggruppati per mese (`substr(date,1,7)`) | Storico › Mesi |
 | Totali raggruppati per anno (`substr(date,1,4)`) | Storico › Anni |
-| Operazioni di un periodo, con ricerca e filtri | Storico › Operazioni |
+| Movimenti (operazioni e trasferimenti, `UNION ALL`) di un periodo, con ricerca e filtri | Storico › Operazioni, Home, dettaglio conto |
+| Saldo di ogni conto e saldo totale | Conti |
 
 Tutte esposte come `ValueObservation`: la UI si aggiorna da sola dopo ogni inserimento, modifica o eliminazione.
 
@@ -300,6 +323,9 @@ Tutte esposte come `ValueObservation`: la UI si aggiorna da sola dopo ogni inser
 - **Entrate del mese** = somma `amount` con `kind = 'income'` nel mese.
 - **Uscite del mese** = somma `amount` con `kind = 'expense'` nel mese.
 - **Saldo del mese** = Entrate − Uscite. Positivo in colore neutro/verde, negativo in rosso. Il segno è sempre esplicito.
+- **I trasferimenti non contano** in entrate, uscite e saldo del mese, né nei grafici: spostare soldi tra i propri conti non è guadagnare né spendere.
+- **Saldo di un conto** = `initial_balance` + entrate − uscite + trasferimenti ricevuti − trasferimenti inviati. Contano tutti i movimenti, anche quelli con data futura.
+- **Saldo totale** = somma dei saldi di tutti i conti, archiviati compresi.
 - **Mese corrente:** definito dal calendario e dal fuso orario correnti del dispositivo.
 - **Formattazione:** `Decimal.FormatStyle.Currency` con la `Locale` dell'utente.
 
@@ -328,15 +354,25 @@ App
      │    ├── Mesi → Operazioni del mese → Dettaglio
      │    └── Anni → Mesi dell'anno → Operazioni del mese → Dettaglio
      │
-     └── Editor operazione (sheet modale, aperto da più punti)
+     ├── Tab "Conti"           (SF Symbol: building.columns)
+     │    ├── Card: Saldo totale
+     │    ├── Conti attivi con saldo → Dettaglio conto
+     │    │      ├── Ultime 5 movimentazioni → Dettaglio
+     │    │      └── "Vedi tutte nello Storico" → Storico filtrato sul conto
+     │    ├── Conti archiviati con saldo diverso da zero
+     │    └── Toolbar: Trasferisci · Gestisci conti
+     │
+     └── Editor operazione / trasferimento (sheet modale, aperto da più punti)
 ```
+
+L'ordine dei tab è Home · Storico · Conti.
 
 ### 7.2 Pulsante "Nuova operazione"
 
 Le HIG riservano la tab bar alla **navigazione tra sezioni**, non alle azioni. Due opzioni:
 
 - **Opzione A — conforme alle HIG (scelta)**
-  - Tab bar con due soli tab: Home e Storico.
+  - Tab bar con le sole sezioni: Home e Storico, poi Conti dalla 1.16.
   - Pulsante "+" (`plus`) come `ToolbarItem(placement: .primaryAction)` in Home e Storico.
 - **Opzione B — "+" al centro della tab bar (richiesta originale, scartata)**
   - Tab centrale "finto" con icona `plus.circle.fill`. Alla selezione si apre lo sheet e si torna al tab precedente.
@@ -345,18 +381,25 @@ Le HIG riservano la tab bar alla **navigazione tra sezioni**, non alle azioni. D
 
 In entrambi i casi su Mac c'è la voce di menu **File › Nuova operazione** con **⌘N** (`CommandGroup(replacing: .newItem)`).
 
+Il trasferimento ha un pulsante proprio, **Trasferisci** (`arrow.left.arrow.right`), nella toolbar del tab Conti e del dettaglio di un conto. Il "+" resta per le operazioni. Su Mac c'è anche **File › Nuovo trasferimento** con **⇧⌘N**.
+
 ### 7.3 Implementazione della navigazione
 
 - **Router di app** `@Observable AppRouter`, definito in `Core` e iniettato nell'`Environment`:
-  - `selectedTab: AppTab` (`.home`, `.history`);
-  - `editor: EditorRequest?`, con `EditorRequest` = `.new(kind: OperationKind?)` oppure `.edit(OperationID)`;
-  - `historyPath: [HistoryRoute]`.
-- `HistoryRoute`: `.operation(OperationID)`, `.month(YearMonth)`, `.year(Int)`.
+  - `selectedTab: AppTab` (`.home`, `.history`, `.accounts`);
+  - `editor: EditorRequest?`, con `EditorRequest` = `.new(kind: OperationKind?)`, `.edit(OperationID)`, `.newTransfer(from: AccountID?)` oppure `.editTransfer(TransferID)`;
+  - `historyPath: [HistoryRoute]`;
+  - `accountsPath: [AccountsRoute]`.
+- `HistoryRoute`: `.operation(OperationID)`, `.transfer(TransferID)`, `.month(YearMonth)`, `.year(Int)`.
+- `AccountsRoute`: `.account(AccountID)`, `.operation(OperationID)`, `.transfer(TransferID)`.
+- `DataTransferRequest` indica export e import del database (§ 10), per non confonderlo con i trasferimenti tra conti.
+- **"Vedi tutte nello Storico"** dal dettaglio di un conto: `selectedTab = .history`, segmento Operazioni, `historyPath = []` e filtro sul conto, passato dal router al modello dell'elenco.
 - **Lo sheet dell'editor è presentato dalla radice**, una sola volta, così ogni punto dell'app lo apre impostando `router.editor`.
 - **"Vedi tutte"** in Home: `selectedTab = .history`, segmento Operazioni, `historyPath = []`.
 - **Storico:**
   - compatto (iPhone): `NavigationStack(path:)`;
   - regolare: su iPad `NavigationSplitView`, con l'elenco in una colonna e il dettaglio nella colonna `detail`; su Mac due colonne affiancate a mano, ridimensionabili, perché la split view annidata nella sidebar dell'app sposta il dettaglio. In entrambi i casi il primo elemento di `historyPath` è la riga selezionata. Su iPad il resto è lo stack del dettaglio; su Mac il dettaglio mostra direttamente l'ultimo elemento, con un tasto indietro.
+- **Conti:** stesso schema dello Storico. Stack su iPhone, `NavigationSplitView` su iPad, due colonne affiancate su Mac.
 - **Stato ripristinabile:** tab selezionato e segmento dello Storico salvati con `@SceneStorage`. Al ritorno dal blocco l'utente ritrova la stessa posizione, ma il dettaglio viene ricaricato dal DB.
 
 ### 7.4 Adattamento per piattaforma
@@ -365,10 +408,11 @@ In entrambi i casi su Mac c'è la voce di menu **File › Nuova operazione** con
 |---|---|---|---|
 | Navigazione principale | Tab bar in basso | Tab bar in alto, comprimibile in sidebar | Sidebar |
 | Storico | Stack: elenco → dettaglio | `NavigationSplitView` | `NavigationSplitView`, colonne ridimensionabili |
+| Conti | Stack: elenco → dettaglio conto | `NavigationSplitView` | Due colonne ridimensionabili, come lo Storico |
 | Editor | Sheet `.large` | Sheet `.formSheet` | Sheet sulla finestra |
 | Impostazioni | Ingranaggio in toolbar Home → sheet | Come iPhone | Finestra propria (⌘,), non la scena `Settings`, che centra il tasto indietro |
 | Blocco | Overlay a tutto schermo | Overlay a tutto schermo | Overlay sulla finestra + ⌃⌘L |
-| Scorciatoie | — | Tastiera esterna: ⌘N, ⌘F | ⌘N nuova, ⌘F cerca, ⌘1/⌘2 cambia sezione, ⌫ elimina selezione, ⇧⌘E esporta DB, ⇧⌘I importa DB |
+| Scorciatoie | — | Tastiera esterna: ⌘N, ⇧⌘N, ⌘F, ⌘1/⌘2/⌘3 | ⌘N nuova operazione, ⇧⌘N nuovo trasferimento, ⌘F cerca, ⌘1/⌘2/⌘3 cambia sezione, ⌫ elimina selezione, ⇧⌘E esporta DB, ⇧⌘I importa DB |
 | Multi-finestra | No | No in v1 | Una sola finestra principale in v1 (`Window`, non `WindowGroup`) **[DA CONFERMARE]** |
 
 ---
@@ -405,7 +449,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
    - Saldo del mese (evidenziato).
 3. **Aggiunta rapida:** due pulsanti affiancati **[+ Entrata]** e **[+ Uscita]**, che aprono l'editor con il tipo già impostato.
 4. **Ultime operazioni:**
-   - le **3 più recenti in assoluto**, non filtrate per il mese selezionato;
+   - le **3 più recenti in assoluto**, non filtrate per il mese selezionato, trasferimenti compresi;
    - riga: icona categoria, nome categoria, nota troncata, data relativa ("Oggi", "Ieri", "12 ott"), importo con segno;
    - tap sulla riga → dettaglio operazione (push nel tab Home);
    - link "Vedi tutte" → tab Storico.
@@ -418,9 +462,12 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 **Toolbar:** titolo "Storico" + `Picker` a segmenti **Operazioni | Mesi | Anni** (default: Operazioni).
 
 **Segmento Operazioni:**
-- elenco di tutte le operazioni, raggruppate per giorno con intestazioni ("Oggi", "Ieri", "Lunedì 26 ottobre");
-- `.searchable`: ricerca su nota e nome della categoria;
-- menu filtri in toolbar: tipo (Tutte/Entrate/Uscite), categoria, conto;
+- elenco di tutte le operazioni e dei trasferimenti, raggruppati per giorno con intestazioni ("Oggi", "Ieri", "Lunedì 26 ottobre");
+- `.searchable`: ricerca su nota, nome della categoria e nomi dei conti di un trasferimento;
+- menu filtri in toolbar: tipo (Tutte/Entrate/Uscite/Trasferimenti), categoria, conto;
+  - una categoria scelta esclude i trasferimenti, che non ne hanno;
+  - il filtro per conto mostra i trasferimenti in cui il conto è origine o destinazione, con "−" se escono da quel conto e "+" se ci entrano. Senza filtro un trasferimento non ha segno;
+  - il filtro per conto attivo compare anche come etichetta sopra l'elenco, chiudibile con una ×;
 - swipe a sinistra → **Elimina**, con conferma;
 - swipe a destra → **Modifica**;
 - su Mac: menu contestuale con le stesse azioni, selezione con tastiera, ⌫ per eliminare;
@@ -430,7 +477,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 - in testa: grafico Swift Charts a barre, entrate e uscite affiancate per gli ultimi 12 mesi;
 - elenco dei mesi con almeno un'operazione, dal più recente;
 - riga: "Ottobre 2026", entrate, uscite, saldo;
-- tap → **Operazioni del mese**: stessa vista del segmento Operazioni filtrata sul mese, con un riepilogo in testa.
+- tap → **Operazioni del mese**: stessa vista del segmento Operazioni filtrata sul mese, con un riepilogo in testa. L'elenco mostra anche i trasferimenti del mese, il riepilogo no.
 
 **Segmento Anni:**
 - in testa: grafico a barre del saldo per anno;
@@ -485,7 +532,44 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 
 - **Cambia PIN:** chiede il PIN attuale e quello nuovo (con conferma). Poi salva nel Keychain un nuovo salt e il nuovo hash, e azzera il contatore dei tentativi.
 - **Gestisci categorie:** elenco diviso per Entrate/Uscite. Si possono aggiungere, rinominare, scegliere icona e colore, riordinare e archiviare.
-- **Gestisci conti:** stesse funzioni.
+- **Gestisci conti:** stesse funzioni. Archiviare un conto con saldo diverso da zero mostra un avviso: "Su questo conto restano [saldo]. Prima di archiviarlo puoi trasferirli su un altro conto.", con i pulsanti "Trasferisci" e "Archivia comunque".
+
+### 8.7 Conti
+
+**Titolo:** "Conti" (large title su iOS).
+
+- **Card del saldo totale**, con il segno esplicito.
+- **Elenco dei conti attivi**, nell'ordine scelto in Gestisci conti: nome e saldo. Tap → dettaglio del conto.
+- **Conti archiviati** con saldo diverso da zero, in una sezione a parte comprimibile.
+- **Toolbar:** **Trasferisci** · **Gestisci conti** (la stessa schermata delle Impostazioni).
+- Con un solo conto attivo, "Trasferisci" apre l'avviso "Per trasferire servono almeno due conti", con il pulsante "Aggiungi un conto".
+
+**Dettaglio conto:**
+- saldo del conto, grande;
+- **ultime 5 movimentazioni** del conto, con il segno relativo al conto anche per i trasferimenti → dettaglio;
+- **"Vedi tutte nello Storico"** → Storico › Operazioni filtrato sul conto;
+- toolbar: **Trasferisci**, con il conto già impostato come origine.
+
+### 8.8 Trasferimento
+
+**Riga negli elenchi:** simbolo `arrow.left.arrow.right` sul colore `transfer` del DesignSystem, titolo "Conto A → Conto B", nota, data relativa, importo (§ 8.3 per il segno). VoiceOver: "Trasferimento, 200 euro, da Conto principale a Risparmi, oggi".
+
+**Dettaglio:** importo, conti "Da" e "A", data estesa, nota, date di creazione e di ultima modifica. Toolbar: **Modifica** · **Elimina** (con conferma).
+
+**Editor** (sheet, come § 8.5). Titolo "Nuovo trasferimento" / "Modifica trasferimento".
+
+| Campo | Controllo | Default | Validazione |
+|---|---|---|---|
+| Importo | Campo grande, come nell'editor di operazione | Vuoto | > 0, al massimo 2 decimali |
+| Da | `Picker` dei conti attivi, con il saldo | Il conto da cui si è partiti, altrimenti il primo | Obbligatorio |
+| A | `Picker` dei conti attivi, escluso quello di origine | Il primo conto diverso dall'origine | Obbligatorio, diverso da "Da" |
+| Data | `DatePicker` (solo data) | Oggi | Nessun limite |
+| Nota | `TextField` multilinea | Vuota | Facoltativa, massimo 200 caratteri |
+
+- Tasto **Inverti** (`arrow.up.arrow.down`) tra "Da" e "A".
+- Importo oltre il saldo del conto di origine: avviso, ma il salvataggio resta possibile.
+- In modifica, un conto archiviato già usato dal trasferimento resta selezionato e visibile.
+- Annulla, modifiche non salvate, ⏎ ed ⎋ e feedback aptico come nell'editor di operazione.
 
 ---
 
@@ -494,7 +578,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 - **HIG:**
   - large title su iOS;
   - SF Symbols per tutte le icone;
-  - colori semantici di sistema più due token del DesignSystem: `income` (verde) e `expense` (rosso), con varianti chiare e scure.
+  - colori semantici di sistema più tre token del DesignSystem: `income` (verde), `expense` (rosso) e `transfer` (blu/indaco), con varianti chiare e scure.
 - **Accessibilità:**
   - Dynamic Type supportato fino alle dimensioni di accessibilità;
   - etichette VoiceOver sugli importi (es. "Uscita, 45 euro e 20, Spesa, oggi");
@@ -531,7 +615,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
   - conforme a `public.database` e `public.data`.
 - **Associazione all'app:** registrata come **Document Type**, con l'app come handler principale. Toccare un file `.homefinances` in File, AirDrop o Mail apre l'app e avvia l'import.
 - **Nome predefinito:** `Home Finances <dispositivo> <AAAA-MM-GG HHmm>.homefinances`, per esempio `Home Finances iPhone 2026-10-30 2145.homefinances`.
-- **Contenuto:** l'intero database (conti, categorie, operazioni, `app_metadata`, tabella delle migrazioni GRDB).
+- **Contenuto:** l'intero database (conti, categorie, operazioni, trasferimenti, `app_metadata`, tabella delle migrazioni GRDB).
 - **Esclusi dal file:** PIN, impostazioni di biometria e preferenze locali come il timeout di blocco.
 
 ### 10.3 Export
@@ -562,7 +646,8 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 1. Copia del file scelto in una cartella temporanea dell'app (con `startAccessingSecurityScopedResource` se serve). Se il file è protetto si chiede la password e lo si decifra; con una password errata si può riprovare.
 2. **Validazione** del file copiato, aperto in sola lettura:
    - è un database SQLite valido, `PRAGMA integrity_check` restituisce `ok` e `foreign_key_check` non trova errori;
-   - contiene le tabelle attese e `app_metadata`;
+   - contiene le tabelle attese e `app_metadata`. Un file con la sola migrazione `v1` non ha `transfer` ed è accettato: la `v2` si esegue dopo l'import;
+   - ogni trasferimento ha conti di origine e destinazione diversi;
    - il file non è attendibile: si rifiuta se contiene trigger o viste, che eseguirebbero codice del file, se a parità di versione lo schema è diverso da quello dell'app, o se una riga non è leggibile;
    - versione dello schema:
      - **uguale o precedente** → accettato; le migrazioni si eseguono dopo l'import;
@@ -572,8 +657,8 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 | | Dati attuali (questo dispositivo) | File da importare |
 |---|---|---|
 | Ultima modifica | data/ora + dispositivo | data/ora + dispositivo |
-| Operazioni | numero | numero |
-| Operazione più recente | data | data |
+| Movimenti (operazioni + trasferimenti) | numero | numero |
+| Movimento più recente | data | data |
 
    - Se i dati attuali sono **più recenti** del file, compare un avviso in evidenza: "I dati su questo dispositivo sono più recenti del file. Importando perderai le modifiche successive al [data]."
    - Se il `database_id` è diverso (i dati vengono da un database creato altrove), l'avviso lo dice esplicitamente.
@@ -586,7 +671,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 6. **Aggiornamento dell'interfaccia:**
    - azzeramento della navigazione;
    - ritorno alla Home;
-   - messaggio di conferma: "Dati importati: N operazioni".
+   - messaggio di conferma: "Dati importati: N movimenti".
 7. **In caso di errore** in qualsiasi passo dopo la copia di sicurezza, si ripristina automaticamente la copia e si mostra l'errore.
 
 - **Annulla ultimo import:** in Impostazioni › Dati si ripristina l'ultima copia di sicurezza. È disponibile se esiste almeno una copia.
@@ -595,6 +680,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 
 - Impostazioni › Dati › **Esporta CSV**, per l'uso in Excel o Numbers.
 - Campi: `data;tipo;importo;valuta;categoria;conto;nota`, separatore `;`, UTF-8 con BOM, importi con la virgola decimale.
+- Un trasferimento è una riga sola: `tipo` = "Trasferimento", `categoria` vuota, `conto` = "Conto A → Conto B".
 - Non è reimportabile: per spostare i dati tra dispositivi si usa il file `.homefinances`.
 - Un testo che inizia con `=`, `+`, `-` o `@` viene preceduto da `'`, perché Excel lo eseguirebbe come formula.
 
@@ -660,6 +746,8 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 | 6 | Impostazioni, gestione categorie e conti, export/import | Funzionalità v1 complete |
 | 7 | Accessibilità, localizzazione, rifinitura Mac (menu, scorciatoie), UI test | Release candidate |
 
+Dopo la v1: **conti e trasferimenti**, in 8 step, descritti in [PIANO-CONTI-TRASFERIMENTI.md](PIANO-CONTI-TRASFERIMENTI.md).
+
 ---
 
 ## 13. Fuori scope v1 (possibili evoluzioni)
@@ -668,8 +756,8 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
   - Il punto critico è l'integrazione GRDB + SQLCipher con Swift Package Manager, che richiede una build personalizzata o un fork.
   - Su Mac è l'unico modo per avere il file cifrato indipendentemente da FileVault.
 - Sincronizzazione **automatica** tra dispositivi e unione (merge) di database diversi. In v1 la sincronizzazione è manuale (§ 10). Gli UUID e `updated_at` sono già predisposti.
-- Multi-valuta con conversione.
-- Trasferimenti tra conti.
+- Multi-valuta con conversione, compresi i trasferimenti tra conti con valute diverse.
+- Trasferimenti ricorrenti.
 - Budget per categoria.
 - Operazioni ricorrenti.
 - Widget, App Intents / Siri, Apple Watch.
@@ -689,3 +777,4 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 | 5 | ~~Ultime 3 operazioni in Home: assolute o del mese selezionato~~ | **Decisa:** assolute |
 | 6 | ~~Libreria di accesso dati~~ | **Decisa:** SQLite + GRDB diretto |
 | 7 | ~~Database incluso nel backup di sistema~~ | **Decisa:** a scelta dell'utente nelle Impostazioni, incluso di default |
+| 8 | ~~Trasferimenti tra conti e tab Conti~~ | **Decise** il 7 novembre 2026: le 10 scelte sono in [PIANO-CONTI-TRASFERIMENTI.md § 4](PIANO-CONTI-TRASFERIMENTI.md#4-decisioni) |
