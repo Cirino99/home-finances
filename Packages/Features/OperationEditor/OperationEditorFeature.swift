@@ -123,6 +123,10 @@ public final class OperationEditorModel {
                 accountID = operation.accountID
                 date = operation.date.date(in: calendar) ?? date
                 note = operation.note ?? ""
+            case .newTransfer, .editTransfer:
+                // La radice apre `TransferEditorView` per queste richieste: qui non sono valide.
+                loadState = .failed
+                return
             }
             initialSnapshot = snapshot
             loadState = .ready
@@ -143,6 +147,8 @@ public final class OperationEditorModel {
                 try await operations.create(draft)
             case .edit(let id):
                 try await operations.update(id, with: draft)
+            case .newTransfer, .editTransfer:
+                return false
             }
             return true
         } catch {

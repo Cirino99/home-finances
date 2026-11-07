@@ -75,6 +75,9 @@ private struct AppCommands: Commands {
             Button("Nuova operazione") { router.newOperation() }
                 .keyboardShortcut("n")
                 .disabled(isLocked)
+            Button("Nuovo trasferimento") { router.newTransfer() }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+                .disabled(isLocked)
             #if os(macOS)
             Button("Esporta database…") { router.dataTransferRequest = .exportDatabase }
                 .keyboardShortcut("e", modifiers: [.command, .shift])

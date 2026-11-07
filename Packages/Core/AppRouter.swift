@@ -11,8 +11,19 @@ public enum EditorRequest: Hashable, Identifiable, Sendable {
     /// `kind` è già impostato dall'aggiunta rapida, altrimenti `nil`.
     case new(kind: OperationKind?)
     case edit(OperationID)
+    /// Nuovo trasferimento (§ 8.8); `from` è il conto da cui si è partiti, altrimenti `nil`.
+    case newTransfer(from: AccountID?)
+    case editTransfer(TransferID)
 
     public var id: Self { self }
+
+    /// `true` per le richieste che aprono l'editor di trasferimento invece di quello di operazione.
+    public var isTransfer: Bool {
+        switch self {
+        case .new, .edit: false
+        case .newTransfer, .editTransfer: true
+        }
+    }
 }
 
 /// Segmenti dello Storico (§ 8.3).
@@ -71,6 +82,11 @@ public final class AppRouter {
 
     public func newOperation(kind: OperationKind? = nil) {
         editor = .new(kind: kind)
+    }
+
+    /// "Trasferisci" (§ 7.2): `from` è il conto aperto, se c'è.
+    public func newTransfer(from account: AccountID? = nil) {
+        editor = .newTransfer(from: account)
     }
 
     /// "Vedi tutte" in Home (§ 7.3).

@@ -78,26 +78,7 @@ public struct OperationEditorView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
 
-                HStack {
-                    if let currency = model.currency {
-                        Text(currency)
-                            .foregroundStyle(.secondary)
-                    }
-                    TextField("Importo", text: $model.amountText, prompt: Text(AmountInput.text(minorUnits: 0)))
-                        .font(.largeTitle)
-                        .monospacedDigit()
-                        .multilineTextAlignment(.trailing)
-                        .labelsHidden()
-                        #if os(iOS)
-                        .keyboardType(.decimalPad)
-                        #else
-                        // Nel Form raggruppato di macOS il campo resta alto quanto una riga di testo
-                        // normale: con il font grande le cifre escono in basso e la selezione
-                        // non le copre. Con lo stile plain l'altezza segue il font.
-                        .textFieldStyle(.plain)
-                        .fixedSize(horizontal: false, vertical: true)
-                        #endif
-                }
+                AmountField(text: $model.amountText, currency: model.currency)
             }
 
             Section("Categoria") {

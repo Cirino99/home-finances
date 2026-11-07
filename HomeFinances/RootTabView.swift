@@ -7,7 +7,7 @@ import OperationEditorFeature
 import Persistence
 import SwiftUI
 
-/// Navigazione principale (§ 7): due tab e l'editor, presentato una sola volta da qui.
+/// Navigazione principale (§ 7): i tab e gli editor, presentati una sola volta da qui.
 struct RootTabView: View {
     let database: AppDatabase
     let store: DatabaseStore
@@ -48,6 +48,30 @@ struct RootTabView: View {
         .environment(router)
         .sensoryFeedback(.success, trigger: savedCount)
         .sheet(item: $router.editor) { request in
+            editor(for: request)
+                .presentationSizing(.form)
+                // L'overlay della radice non copre gli sheet (§ 9).
+                .privacyCover(appLock.isPrivacyCovered)
+        }
+        .modifier(DataTransferPresenter(database: database, store: store, appLock: appLock, router: router))
+        .onAppear {
+            router.selectedTab = storedTab
+            router.historySegment = storedSegment
+        }
+        .onChange(of: router.selectedTab) { _, tab in storedTab = tab }
+        .onChange(of: router.historySegment) { _, segment in storedSegment = segment }
+    }
+
+    /// Un solo sheet per entrambi gli editor (§ 7.3): la richiesta dice quale mostrare.
+    @ViewBuilder
+    private func editor(for request: EditorRequest) -> some View {
+        if let model = TransferEditorModel(
+            request: request,
+            transfers: database.transfers,
+            movements: database.movements
+        ) {
+            TransferEditorView(model: model, onSaved: { savedCount += 1 })
+        } else {
             OperationEditorView(
                 model: OperationEditorModel(
                     request: request,
@@ -57,17 +81,7 @@ struct RootTabView: View {
                 ),
                 onSaved: { savedCount += 1 }
             )
-            .presentationSizing(.form)
-            // L'overlay della radice non copre gli sheet (§ 9).
-            .privacyCover(appLock.isPrivacyCovered)
         }
-        .modifier(DataTransferPresenter(database: database, store: store, appLock: appLock, router: router))
-        .onAppear {
-            router.selectedTab = storedTab
-            router.historySegment = storedSegment
-        }
-        .onChange(of: router.selectedTab) { _, tab in storedTab = tab }
-        .onChange(of: router.historySegment) { _, segment in storedSegment = segment }
     }
 
     /// Azione, non sezione: sta nella toolbar e non nella tab bar (§ 7.2, Opzione A).
