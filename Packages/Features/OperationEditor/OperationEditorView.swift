@@ -90,6 +90,12 @@ public struct OperationEditorView: View {
                         .labelsHidden()
                         #if os(iOS)
                         .keyboardType(.decimalPad)
+                        #else
+                        // Nel Form raggruppato di macOS il campo resta alto quanto una riga di testo
+                        // normale: con il font grande le cifre escono in basso e la selezione
+                        // non le copre. Con lo stile plain l'altezza segue il font.
+                        .textFieldStyle(.plain)
+                        .fixedSize(horizontal: false, vertical: true)
                         #endif
                 }
             }
