@@ -133,7 +133,7 @@ struct DataTransferPresenter: ViewModifier {
             }
             #endif
             .onAppear(perform: processRequests)
-            .onChange(of: router.transferRequest) { processRequests() }
+            .onChange(of: router.dataTransferRequest) { processRequests() }
             .onChange(of: router.pendingImportURL) { processRequests() }
     }
 
@@ -145,8 +145,8 @@ struct DataTransferPresenter: ViewModifier {
             router.editor = nil
             prepareImport(from: url)
         }
-        guard let request = router.transferRequest else { return }
-        router.transferRequest = nil
+        guard let request = router.dataTransferRequest else { return }
+        router.dataTransferRequest = nil
         switch request {
         case .exportDatabase:
             isShowingExportOptions = true

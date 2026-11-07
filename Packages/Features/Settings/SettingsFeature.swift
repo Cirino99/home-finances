@@ -126,8 +126,8 @@ public struct SettingsView: View {
     }
 
     /// Su iPhone e iPad l'azione parte quando questo sheet si è chiuso.
-    private func request(_ transfer: TransferRequest) {
-        router.transferRequest = transfer
+    private func request(_ dataRequest: DataTransferRequest) {
+        router.dataTransferRequest = dataRequest
         #if os(iOS)
         dismiss()
         #endif

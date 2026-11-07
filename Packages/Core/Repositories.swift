@@ -8,6 +8,8 @@ public enum RepositoryError: Error, Equatable {
     case nameEmpty
     /// Serve sempre almeno un conto attivo su cui registrare le operazioni.
     case lastActiveAccount
+    /// I due conti di un trasferimento hanno valute diverse.
+    case currencyMismatch
 }
 
 public protocol OperationRepository: Sendable {
@@ -56,4 +58,41 @@ public protocol AccountRepository: Sendable {
     func remove(_ id: AccountID) async throws -> RemovalOutcome
 
     func observeAccounts(includingArchived: Bool) -> AsyncThrowingStream<[Account], any Error>
+}
+
+/// Trasferimenti tra conti (§ 8.8).
+public protocol TransferRepository: Sendable {
+    /// Lancia `TransferDraftError` se la bozza non è valida, `RepositoryError.notFound` se un conto non esiste,
+    /// `RepositoryError.currencyMismatch` se i conti hanno valute diverse.
+    @discardableResult
+    func create(_ draft: TransferDraft) async throws -> AccountTransfer
+    @discardableResult
+    func update(_ id: TransferID, with draft: TransferDraft) async throws -> AccountTransfer
+    func delete(_ id: TransferID) async throws
+    func transfer(_ id: TransferID) async throws -> AccountTransfer?
+
+    func observeItem(_ id: TransferID) -> AsyncThrowingStream<TransferListItem?, any Error>
+}
+
+/// Letture che uniscono operazioni e trasferimenti: elenchi dei movimenti e saldi dei conti (§ 6.3).
+public protocol MovementRepository: Sendable {
+    /// Ordinati per data, poi per creazione, poi per id: l'ordine resta stabile tra le pagine.
+    func observeMovements(_ query: MovementQuery) -> AsyncThrowingStream<[MovementListItem], any Error>
+    /// Saldi di tutti i conti, archiviati compresi, nell'ordine dei conti.
+    func observeBalances() -> AsyncThrowingStream<[AccountBalance], any Error>
+}
+
+public extension MovementRepository {
+    /// Ultimi movimenti in assoluto, oppure di un conto (§ 8.2, § 8.7).
+    func observeRecentMovements(limit: Int, account: AccountID? = nil) -> AsyncThrowingStream<[MovementListItem], any Error> {
+        observeMovements(MovementQuery(accountID: account, limit: limit))
+    }
+
+    /// Tutti i movimenti, per l'export CSV.
+    func allMovements() async throws -> [MovementListItem] {
+        for try await items in observeMovements(MovementQuery(limit: .max)) {
+            return items
+        }
+        return []
+    }
 }

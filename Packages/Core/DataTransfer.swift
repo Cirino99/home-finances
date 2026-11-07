@@ -108,17 +108,37 @@ public enum CSVDocument {
 
     /// UTF-8 con BOM, senza il quale Excel sbaglia le lettere accentate.
     public static func data(for items: [OperationListItem]) -> Data {
-        let rows = items.map { item in
-            let operation = item.operation
-            return [
-                operation.date.string,
-                operation.kind == .income ? "Entrata" : "Uscita",
-                amountText(operation.amount),
-                operation.currency,
-                escaped(item.category.name),
-                escaped(item.accountName),
-                escaped(operation.note ?? ""),
-            ].joined(separator: ";")
+        data(forMovements: items.map(MovementListItem.operation))
+    }
+
+    /// Un trasferimento è una riga sola: tipo "Trasferimento", nessuna categoria,
+    /// conto "Conto A → Conto B" (§ 10.5).
+    public static func data(forMovements movements: [MovementListItem]) -> Data {
+        let rows = movements.map { movement in
+            switch movement {
+            case .operation(let item):
+                let operation = item.operation
+                return [
+                    operation.date.string,
+                    operation.kind == .income ? "Entrata" : "Uscita",
+                    amountText(operation.amount),
+                    operation.currency,
+                    escaped(item.category.name),
+                    escaped(item.accountName),
+                    escaped(operation.note ?? ""),
+                ].joined(separator: ";")
+            case .transfer(let item):
+                let transfer = item.transfer
+                return [
+                    transfer.date.string,
+                    "Trasferimento",
+                    amountText(transfer.amount),
+                    transfer.currency,
+                    "",
+                    escaped(item.title),
+                    escaped(transfer.note ?? ""),
+                ].joined(separator: ";")
+            }
         }
         let text = ([header] + rows).joined(separator: "\r\n") + "\r\n"
         return Data([0xEF, 0xBB, 0xBF]) + Data(text.utf8)

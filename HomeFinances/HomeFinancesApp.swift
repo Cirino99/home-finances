@@ -76,10 +76,10 @@ private struct AppCommands: Commands {
                 .keyboardShortcut("n")
                 .disabled(isLocked)
             #if os(macOS)
-            Button("Esporta database…") { router.transferRequest = .exportDatabase }
+            Button("Esporta database…") { router.dataTransferRequest = .exportDatabase }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
                 .disabled(isLocked)
-            Button("Importa database…") { router.transferRequest = .importDatabase }
+            Button("Importa database…") { router.dataTransferRequest = .importDatabase }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
                 .disabled(isLocked)
             #endif

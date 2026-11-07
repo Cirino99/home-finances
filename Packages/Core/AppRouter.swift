@@ -30,7 +30,7 @@ public enum HistoryRoute: Hashable, Sendable {
 
 /// Azioni sui dati chieste dalle Impostazioni o dal menu del Mac (§ 10). Le esegue la radice dell'app:
 /// un pannello non si può aprire mentre si sta chiudendo lo sheet delle Impostazioni.
-public enum TransferRequest: Equatable, Sendable {
+public enum DataTransferRequest: Equatable, Sendable {
     case exportDatabase
     case importDatabase
     case exportCSV
@@ -48,8 +48,11 @@ public final class AppRouter {
     public var homePath: [OperationID] = []
     public var historySegment: HistorySegment = .operations
     public var historyPath: [HistoryRoute] = []
+    /// Filtro per conto chiesto da fuori dallo Storico, per esempio dal dettaglio di un conto (§ 7.3).
+    /// L'elenco lo legge, lo applica come gli altri filtri e lo azzera.
+    public var pendingHistoryAccountFilter: AccountID?
     public var isSettingsPresented = false
-    public var transferRequest: TransferRequest?
+    public var dataTransferRequest: DataTransferRequest?
     /// File `.homefinances` aperto dall'esterno: l'import parte solo dopo lo sblocco (§ 10.4).
     public var pendingImportURL: URL?
     /// Esito di un'azione sui dati, mostrato sopra tutto.
@@ -77,12 +80,18 @@ public final class AppRouter {
         historyPath = []
     }
 
+    /// "Vedi tutte nello Storico" dal dettaglio di un conto (§ 8.7).
+    public func showHistory(account: AccountID) {
+        showAllOperations()
+        pendingHistoryAccountFilter = account
+    }
+
     /// Al blocco si chiude ciò che è aperto sopra il contenuto (§ 5.4). Tab e percorso restano,
     /// così dopo lo sblocco l'utente ritrova la stessa posizione.
     public func dismissPresentations() {
         editor = nil
         isSettingsPresented = false
-        transferRequest = nil
+        dataTransferRequest = nil
     }
 
     /// Dopo un import i dati sono altri: niente di ciò che era aperto ha più senso (§ 10.4).
@@ -91,5 +100,6 @@ public final class AppRouter {
         selectedTab = .home
         homePath = []
         historyPath = []
+        pendingHistoryAccountFilter = nil
     }
 }
