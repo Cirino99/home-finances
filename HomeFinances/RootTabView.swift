@@ -39,6 +39,8 @@ struct RootTabView: View {
                 // Gestisce da sé stack e split view, a seconda dello spazio disponibile.
                 HistoryView(
                     operations: database.operations,
+                    transfers: database.transfers,
+                    movements: database.movements,
                     categories: database.categories,
                     accounts: database.accounts
                 )

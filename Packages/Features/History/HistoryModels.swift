@@ -5,18 +5,20 @@ import Observation
 /// Repository usati dallo Storico.
 struct HistoryRepositories {
     let operations: any OperationRepository
+    let transfers: any TransferRepository
+    let movements: any MovementRepository
     let categories: any CategoryRepository
     let accounts: any AccountRepository
 }
 
-/// Operazioni raggruppate per giorno, con ricerca, filtri e pagine (§ 8.3).
+/// Operazioni e trasferimenti raggruppati per giorno, con ricerca, filtri e pagine (§ 8.3).
 /// Con `month` è la vista "Operazioni del mese".
 @MainActor
 @Observable
 final class OperationListModel {
     struct DaySection: Identifiable, Equatable {
         let day: Day
-        let items: [OperationListItem]
+        let items: [MovementListItem]
 
         var id: Day { day }
     }
@@ -26,10 +28,10 @@ final class OperationListModel {
     var searchText = "" {
         didSet { pages = 1 }
     }
-    var kind: OperationKind? {
+    var kind: MovementKind? {
         didSet {
             pages = 1
-            // Una categoria dell'altro tipo escluderebbe tutto.
+            // Una categoria dell'altro tipo, o una qualsiasi con i trasferimenti, escluderebbe tutto.
             if let categoryID, !visibleCategories.contains(where: { $0.id == categoryID }) {
                 self.categoryID = nil
             }
@@ -42,7 +44,7 @@ final class OperationListModel {
         didSet { pages = 1 }
     }
 
-    private(set) var items: [OperationListItem] = []
+    private(set) var items: [MovementListItem] = []
     private(set) var totals = PeriodTotals()
     private(set) var categories: [OperationCategory] = []
     private(set) var accounts: [Account] = []
@@ -54,15 +56,15 @@ final class OperationListModel {
     private let repositories: HistoryRepositories
     private let pageSize: Int
 
-    init(month: YearMonth?, repositories: HistoryRepositories, pageSize: Int = OperationQuery.defaultPageSize) {
+    init(month: YearMonth?, repositories: HistoryRepositories, pageSize: Int = MovementQuery.defaultPageSize) {
         self.month = month
         self.repositories = repositories
         self.pageSize = pageSize
     }
 
     /// La vista riavvia la lettura quando cambia: ricerca, filtri o numero di pagine.
-    var query: OperationQuery {
-        OperationQuery(
+    var query: MovementQuery {
+        MovementQuery(
             month: month,
             searchText: searchText,
             kind: kind,
@@ -74,16 +76,16 @@ final class OperationListModel {
 
     var sections: [DaySection] {
         var sections: [DaySection] = []
-        var current: [OperationListItem] = []
+        var current: [MovementListItem] = []
         for item in items {
-            if let last = current.last, last.operation.date != item.operation.date {
-                sections.append(DaySection(day: last.operation.date, items: current))
+            if let last = current.last, last.date != item.date {
+                sections.append(DaySection(day: last.date, items: current))
                 current = []
             }
             current.append(item)
         }
         if let last = current.last {
-            sections.append(DaySection(day: last.operation.date, items: current))
+            sections.append(DaySection(day: last.date, items: current))
         }
         return sections
     }
@@ -101,8 +103,20 @@ final class OperationListModel {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// Categorie del tipo scelto. Nessuna con i trasferimenti, che non ne hanno.
     var visibleCategories: [OperationCategory] {
-        categories.filter { kind == nil || $0.kind == kind }
+        guard kind != .transfer else { return [] }
+        return categories.filter { kind == nil || $0.kind == kind?.operationKind }
+    }
+
+    /// Il conto del filtro, mostrato nell'etichetta sopra l'elenco (§ 8.3).
+    var filteredAccount: Account? {
+        accounts.first { $0.id == accountID }
+    }
+
+    /// Il filtro per conto serve solo con più conti, o se è già attivo (per esempio su un conto archiviato).
+    var showsAccountFilter: Bool {
+        accounts.count > 1 || accountID != nil
     }
 
     var currency: String? {
@@ -121,9 +135,20 @@ final class OperationListModel {
         accountID = nil
     }
 
-    func delete(_ id: OperationID) async {
+    /// "Vedi tutte nello Storico" da un conto (§ 8.7): solo i movimenti di quel conto,
+    /// senza altri filtri o ricerche rimasti da prima.
+    func show(account: AccountID) {
+        searchText = ""
+        clearFilters()
+        accountID = account
+    }
+
+    func delete(_ id: MovementID) async {
         do {
-            try await repositories.operations.delete(id)
+            switch id {
+            case .operation(let id): try await repositories.operations.delete(id)
+            case .transfer(let id): try await repositories.transfers.delete(id)
+            }
         } catch {
             deleteFailed = true
         }
@@ -137,7 +162,7 @@ final class OperationListModel {
 
     func observeItems() async {
         do {
-            for try await value in repositories.operations.observeItems(query) {
+            for try await value in repositories.movements.observeMovements(query) {
                 items = value
                 hasLoaded = true
             }
@@ -146,7 +171,7 @@ final class OperationListModel {
         }
     }
 
-    /// Riepilogo in testa a "Operazioni del mese".
+    /// Riepilogo in testa a "Operazioni del mese": entrate e uscite, senza i trasferimenti (§ 6.4).
     func observeTotals() async {
         guard let month else { return }
         do {

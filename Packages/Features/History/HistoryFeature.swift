@@ -15,10 +15,18 @@ public struct HistoryView: View {
 
     public init(
         operations: any OperationRepository,
+        transfers: any TransferRepository,
+        movements: any MovementRepository,
         categories: any CategoryRepository,
         accounts: any AccountRepository
     ) {
-        repositories = HistoryRepositories(operations: operations, categories: categories, accounts: accounts)
+        repositories = HistoryRepositories(
+            operations: operations,
+            transfers: transfers,
+            movements: movements,
+            categories: categories,
+            accounts: accounts
+        )
     }
 
     public var body: some View {
@@ -96,7 +104,7 @@ public struct HistoryView: View {
 
     private func title(of route: HistoryRoute) -> String {
         switch route {
-        case .operation: "Dettaglio"
+        case .operation, .transfer: "Dettaglio"
         case .month(let month): DayFormat.monthTitle(month)
         case .year(let year): String(year)
         }
@@ -133,6 +141,10 @@ public struct HistoryView: View {
         switch route {
         case .operation(let id):
             OperationDetailView(id: id, operations: repositories.operations) {
+                router.historyPath.removeAll { $0 == route }
+            }
+        case .transfer(let id):
+            TransferDetailView(id: id, transfers: repositories.transfers) {
                 router.historyPath.removeAll { $0 == route }
             }
         case .month(let month):

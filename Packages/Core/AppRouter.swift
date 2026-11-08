@@ -35,6 +35,7 @@ public enum HistorySegment: String, CaseIterable, Sendable {
 
 public enum HistoryRoute: Hashable, Sendable {
     case operation(OperationID)
+    case transfer(TransferID)
     case month(YearMonth)
     case year(Int)
 }

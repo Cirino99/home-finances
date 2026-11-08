@@ -68,7 +68,7 @@ private struct HistorySearchField: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            TextField("Nota o categoria", text: $text)
+            TextField("Nota, categoria o conto", text: $text)
                 .autocorrectionDisabled()
                 .submitLabel(.search)
                 .focused(isFocused)
@@ -90,11 +90,11 @@ private struct HistorySearchField: View {
 }
 #endif
 
-/// Segmento Operazioni e vista "Operazioni del mese" (§ 8.3).
+/// Segmento Operazioni e vista "Operazioni del mese" (§ 8.3): operazioni e trasferimenti.
 struct OperationListView: View {
     let selection: Binding<HistoryRoute?>?
     @State private var model: OperationListModel
-    @State private var pendingDeletion: OperationID?
+    @State private var pendingDeletion: MovementID?
     @FocusState private var isSearchFocused: Bool
     @Environment(AppRouter.self) private var router
 
@@ -109,6 +109,11 @@ struct OperationListView: View {
             if model.month != nil, let currency = model.currency {
                 Section {
                     PeriodSummary(totals: model.totals, currency: currency)
+                }
+            }
+            if let account = model.filteredAccount {
+                Section {
+                    AccountFilterLabel(name: account.name) { model.accountID = nil }
                 }
             }
             ForEach(model.sections) { section in
@@ -126,7 +131,7 @@ struct OperationListView: View {
         }
         .overlay { emptyState }
         #if os(macOS)
-        .searchable(text: $model.searchText, prompt: "Nota o categoria")
+        .searchable(text: $model.searchText, prompt: "Nota, categoria o conto")
         .searchFocused($isSearchFocused)
         #else
         // Non `.searchable`: starebbe sopra il picker dei segmenti e lo sposterebbe a ogni cambio di segmento.
@@ -135,15 +140,19 @@ struct OperationListView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         #endif
-        .onAppear(perform: focusSearchIfPending)
+        .onAppear {
+            focusSearchIfPending()
+            applyPendingAccountFilter()
+        }
         .onChange(of: router.isSearchPending) { focusSearchIfPending() }
+        .onChange(of: router.pendingHistoryAccountFilter) { applyPendingAccountFilter() }
         .toolbar {
             ToolbarItem(placement: .automatic) {
                 filterMenu
             }
         }
         .confirmationDialog(
-            "Eliminare questa operazione?",
+            deletionTitle,
             isPresented: isConfirmingDeletion,
             titleVisibility: .visible,
             presenting: pendingDeletion
@@ -158,8 +167,10 @@ struct OperationListView: View {
         }
         #if os(macOS)
         .onDeleteCommand {
-            if case .operation(let id) = selection?.wrappedValue {
-                pendingDeletion = id
+            switch selection?.wrappedValue {
+            case .operation(let id): pendingDeletion = .operation(id)
+            case .transfer(let id): pendingDeletion = .transfer(id)
+            default: break
             }
         }
         #endif
@@ -180,6 +191,13 @@ struct OperationListView: View {
         isSearchFocused = true
     }
 
+    /// "Vedi tutte nello Storico" da un conto (§ 8.7). Come la ricerca, vale per l'elenco completo.
+    private func applyPendingAccountFilter() {
+        guard model.month == nil, let account = router.pendingHistoryAccountFilter else { return }
+        router.pendingHistoryAccountFilter = nil
+        model.show(account: account)
+    }
+
     private var isConfirmingDeletion: Binding<Bool> {
         Binding(
             get: { pendingDeletion != nil },
@@ -191,9 +209,17 @@ struct OperationListView: View {
         )
     }
 
-    private func row(_ item: OperationListItem) -> some View {
-        HistoryRouteRow(route: .operation(item.id), isSelectable: selection != nil) {
-            OperationRow(item: item, today: today)
+    private var deletionTitle: LocalizedStringKey {
+        if case .transfer = pendingDeletion {
+            "Eliminare questo trasferimento?"
+        } else {
+            "Eliminare questa operazione?"
+        }
+    }
+
+    private func row(_ item: MovementListItem) -> some View {
+        HistoryRouteRow(route: route(of: item.id), isSelectable: selection != nil) {
+            MovementRow(item: item, today: today, account: model.accountID)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             // Senza ruolo distruttivo: la riga deve restare finché non arriva la conferma.
@@ -201,18 +227,33 @@ struct OperationListView: View {
                 .tint(.red)
         }
         .swipeActions(edge: .leading) {
-            Button("Modifica", systemImage: "pencil") { router.editor = .edit(item.id) }
+            Button("Modifica", systemImage: "pencil") { edit(item.id) }
                 .tint(.accentColor)
         }
         .contextMenu {
-            Button("Modifica", systemImage: "pencil") { router.editor = .edit(item.id) }
+            Button("Modifica", systemImage: "pencil") { edit(item.id) }
             Button("Elimina", systemImage: "trash", role: .destructive) { pendingDeletion = item.id }
         }
     }
 
-    private func delete(_ id: OperationID) {
-        // Un dettaglio aperto su questa operazione non avrebbe più nulla da mostrare.
-        router.historyPath.removeAll { $0 == .operation(id) }
+    private func route(of id: MovementID) -> HistoryRoute {
+        switch id {
+        case .operation(let id): .operation(id)
+        case .transfer(let id): .transfer(id)
+        }
+    }
+
+    private func edit(_ id: MovementID) {
+        switch id {
+        case .operation(let id): router.editor = .edit(id)
+        case .transfer(let id): router.editor = .editTransfer(id)
+        }
+    }
+
+    private func delete(_ id: MovementID) {
+        // Un dettaglio aperto su questo movimento non avrebbe più nulla da mostrare.
+        let route = route(of: id)
+        router.historyPath.removeAll { $0 == route }
         Task { await model.delete(id) }
     }
 
@@ -222,7 +263,7 @@ struct OperationListView: View {
             ContentUnavailableView(
                 "Dati non disponibili",
                 systemImage: "exclamationmark.triangle",
-                description: Text("Non è stato possibile caricare le operazioni.")
+                description: Text("Non è stato possibile caricare i movimenti.")
             )
         } else if model.hasLoaded, model.items.isEmpty {
             if model.isSearching {
@@ -247,17 +288,21 @@ struct OperationListView: View {
         @Bindable var model = model
         return Menu {
             Picker("Tipo", selection: $model.kind) {
-                Text("Tutte").tag(OperationKind?.none)
-                Text("Entrate").tag(OperationKind?.some(.income))
-                Text("Uscite").tag(OperationKind?.some(.expense))
+                Text("Tutte").tag(MovementKind?.none)
+                Text("Entrate").tag(MovementKind?.some(.income))
+                Text("Uscite").tag(MovementKind?.some(.expense))
+                Text("Trasferimenti").tag(MovementKind?.some(.transfer))
             }
-            Picker("Categoria", selection: $model.categoryID) {
-                Text("Tutte").tag(CategoryID?.none)
-                ForEach(model.visibleCategories) { category in
-                    Text(category.name).tag(CategoryID?.some(category.id))
+            // I trasferimenti non hanno categoria (§ 8.3).
+            if model.kind != .transfer {
+                Picker("Categoria", selection: $model.categoryID) {
+                    Text("Tutte").tag(CategoryID?.none)
+                    ForEach(model.visibleCategories) { category in
+                        Text(category.name).tag(CategoryID?.some(category.id))
+                    }
                 }
             }
-            if model.accounts.count > 1 {
+            if model.showsAccountFilter {
                 Picker("Conto", selection: $model.accountID) {
                     Text("Tutti").tag(AccountID?.none)
                     ForEach(model.accounts) { account in
@@ -277,5 +322,28 @@ struct OperationListView: View {
                     : "line.3.horizontal.decrease.circle"
             )
         }
+    }
+}
+
+/// Filtro per conto attivo, visibile anche fuori dal menu (§ 8.3). La × lo toglie.
+private struct AccountFilterLabel: View {
+    let name: String
+    let onClear: () -> Void
+
+    var body: some View {
+        HStack {
+            Label {
+                Text("Conto: \(name)")
+            } icon: {
+                Image(systemName: "building.columns")
+            }
+            .foregroundStyle(.secondary)
+            Spacer()
+            Button("Togli il filtro per conto", systemImage: "xmark.circle.fill", action: onClear)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+        }
+        .font(.subheadline)
     }
 }
