@@ -53,7 +53,11 @@ let package = Package(
         .target(name: "HistoryFeature", dependencies: ["Core", "DesignSystem", "OperationEditorFeature"], path: "Features/History"),
         .target(name: "AccountsFeature", dependencies: ["Core", "DesignSystem", "OperationEditorFeature"], path: "Features/Accounts"),
         .target(name: "OperationEditorFeature", dependencies: ["Core", "DesignSystem"], path: "Features/OperationEditor"),
-        .target(name: "SettingsFeature", dependencies: ["Core", "DesignSystem", "AppSecurity"], path: "Features/Settings"),
+        .target(
+            name: "SettingsFeature",
+            dependencies: ["Core", "DesignSystem", "AppSecurity", "OperationEditorFeature"],
+            path: "Features/Settings"
+        ),
 
         .testTarget(name: "CoreTests", dependencies: ["Core"], path: "Tests/CoreTests"),
         .testTarget(name: "PersistenceTests", dependencies: ["Core", "Persistence"], path: "Tests/PersistenceTests"),

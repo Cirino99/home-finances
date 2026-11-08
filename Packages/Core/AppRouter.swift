@@ -42,6 +42,12 @@ public enum HistoryRoute: Hashable, Sendable {
     case year(Int)
 }
 
+/// Dettagli aperti dalla Home (§ 8.2): le ultime operazioni comprendono i trasferimenti.
+public enum HomeRoute: Hashable, Sendable {
+    case operation(OperationID)
+    case transfer(TransferID)
+}
+
 /// Percorso del tab Conti (§ 8.7): un conto, e da lì un suo movimento.
 public enum AccountsRoute: Hashable, Sendable {
     case account(AccountID)
@@ -66,7 +72,7 @@ public final class AppRouter {
     public var selectedTab: AppTab = .home
     public var editor: EditorRequest?
     /// Dettagli aperti dalla Home (§ 8.2).
-    public var homePath: [OperationID] = []
+    public var homePath: [HomeRoute] = []
     public var historySegment: HistorySegment = .operations
     public var historyPath: [HistoryRoute] = []
     /// Filtro per conto chiesto da fuori dallo Storico, per esempio dal dettaglio di un conto (§ 7.3).

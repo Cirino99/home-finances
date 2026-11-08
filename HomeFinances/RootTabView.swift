@@ -23,18 +23,23 @@ struct RootTabView: View {
         TabView(selection: $router.selectedTab) {
             Tab("Home", systemImage: "house", value: AppTab.home) {
                 NavigationStack(path: $router.homePath) {
-                    HomeView(operations: database.operations, accounts: database.accounts)
-                        .toolbar {
-                            #if os(iOS)
-                            // Su Mac le Impostazioni hanno una propria finestra, con ⌘, (§ 7.4).
-                            ToolbarItem(placement: .topBarLeading) {
-                                Button("Impostazioni", systemImage: "gearshape") {
-                                    router.isSettingsPresented = true
-                                }
+                    HomeView(
+                        operations: database.operations,
+                        transfers: database.transfers,
+                        movements: database.movements,
+                        accounts: database.accounts
+                    )
+                    .toolbar {
+                        #if os(iOS)
+                        // Su Mac le Impostazioni hanno una propria finestra, con ⌘, (§ 7.4).
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Impostazioni", systemImage: "gearshape") {
+                                router.isSettingsPresented = true
                             }
-                            #endif
-                            newOperationButton
                         }
+                        #endif
+                        newOperationButton
+                    }
                 }
             }
             Tab("Storico", systemImage: "list.bullet.rectangle", value: AppTab.history) {
@@ -68,16 +73,22 @@ struct RootTabView: View {
         // "Gestisci conti" dal tab Conti: la stessa schermata delle Impostazioni (§ 8.7).
         .sheet(isPresented: $router.isAccountManagementPresented) {
             NavigationStack {
-                AccountsCatalogView(repository: database.accounts)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Fine") { router.isAccountManagementPresented = false }
-                        }
+                AccountsCatalogView(
+                    repository: database.accounts,
+                    transfers: database.transfers,
+                    movements: database.movements
+                )
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Fine") { router.isAccountManagementPresented = false }
                     }
+                }
             }
             #if os(macOS)
             .frame(minWidth: 460, minHeight: 480)
             #endif
+            // Lo sheet è presentato da qui: non eredita l'ambiente impostato sul contenuto.
+            .environment(router)
             .privacyCover(appLock.isPrivacyCovered)
         }
         .modifier(DataTransferPresenter(database: database, store: store, appLock: appLock, router: router))

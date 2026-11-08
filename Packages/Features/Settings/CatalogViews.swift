@@ -1,5 +1,6 @@
 import Core
 import DesignSystem
+import OperationEditorFeature
 import SwiftUI
 
 /// Gestione delle categorie (§ 8.6): divise per tipo, con aggiunta, modifica, ordine e archiviazione.
@@ -130,15 +131,32 @@ public struct AccountsCatalogView: View {
         }
     }
 
+    /// Trasferimento proposto prima di rimuovere un conto con un saldo.
+    private struct TransferSource: Identifiable {
+        let id: AccountID
+    }
+
     private let repository: any AccountRepository
+    private let transfers: any TransferRepository
+    private let movements: any MovementRepository
     private let currency: String?
     @State private var accounts: [Account] = []
+    @State private var balances: [AccountID: Int64] = [:]
     @State private var editing: Editing?
+    @State private var pendingRemoval: Account?
+    @State private var transferSource: TransferSource?
     @State private var errorMessage: String?
 
     /// `currency` è la valuta dei conti nuovi; senza, quella dei conti esistenti (una sola in v1, § 6.1).
-    public init(repository: any AccountRepository, currency: String? = nil) {
+    public init(
+        repository: any AccountRepository,
+        transfers: any TransferRepository,
+        movements: any MovementRepository,
+        currency: String? = nil
+    ) {
         self.repository = repository
+        self.transfers = transfers
+        self.movements = movements
         self.currency = currency
     }
 
@@ -207,6 +225,37 @@ public struct AccountsCatalogView: View {
                 }
             }
         }
+        .confirmationDialog(
+            "Il conto ha ancora un saldo",
+            isPresented: Binding(
+                get: { pendingRemoval != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        pendingRemoval = nil
+                    }
+                }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingRemoval
+        ) { account in
+            if canTransfer(from: account) {
+                Button("Trasferisci") { transferSource = TransferSource(id: account.id) }
+            }
+            Button("Rimuovi comunque", role: .destructive) {
+                perform { _ = try await repository.remove(account.id) }
+            }
+        } message: { account in
+            let amount = MoneyFormat.string(minorUnits: balances[account.id] ?? 0, currency: account.currency)
+            Text("Su questo conto restano \(amount). Prima di rimuoverlo puoi trasferirli su un altro conto.")
+        }
+        // Sopra questa schermata, che sia nelle Impostazioni o nel tab Conti: su Mac le Impostazioni
+        // sono una finestra a parte, e l'editor della finestra principale non si vedrebbe.
+        .sheet(item: $transferSource) { source in
+            TransferEditorView(
+                model: TransferEditorModel(from: source.id, transfers: transfers, movements: movements),
+                onSaved: {}
+            )
+        }
         .catalogErrorAlert($errorMessage)
         .task {
             do {
@@ -217,22 +266,45 @@ public struct AccountsCatalogView: View {
                 errorMessage = "Non è stato possibile caricare i conti."
             }
         }
+        .task {
+            do {
+                for try await value in movements.observeBalances() {
+                    balances = Dictionary(uniqueKeysWithValues: value.map { ($0.account.id, $0.balance) })
+                }
+            } catch {
+                errorMessage = "Non è stato possibile caricare i saldi dei conti."
+            }
+        }
     }
 
+    /// Serve un altro conto attivo su cui spostare il saldo.
+    private func canTransfer(from account: Account) -> Bool {
+        !account.isArchived && accounts.contains { !$0.isArchived && $0.id != account.id }
+    }
+
+    /// Saldo attuale, come nel tab Conti (§ 8.7). Il saldo iniziale si vede aprendo il conto.
     private func row(_ account: Account) -> some View {
         HStack {
             Text(account.name)
             Spacer()
-            Text(MoneyFormat.string(minorUnits: account.initialBalance, currency: account.currency))
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
+            if let balance = balances[account.id] {
+                Text(MoneyFormat.string(minorUnits: balance, currency: account.currency, signed: true))
+                    .monospacedDigit()
+                    .foregroundStyle(balance < 0 ? Color.expense : Color.primary)
+                    .accessibilityLabel("Saldo attuale: \(MoneyFormat.string(minorUnits: balance, currency: account.currency))")
+            }
         }
         .contentShape(Rectangle())
-        .accessibilityHint("Saldo iniziale")
+        .accessibilityElement(children: .combine)
     }
 
+    /// Con un saldo diverso da zero si avvisa prima e si propone di trasferirlo (§ 8.6).
     private func remove(_ account: Account) {
-        perform { _ = try await repository.remove(account.id) }
+        if let balance = balances[account.id], balance != 0 {
+            pendingRemoval = account
+        } else {
+            perform { _ = try await repository.remove(account.id) }
+        }
     }
 
     private func perform(_ action: @escaping @MainActor () async throws -> Void) {

@@ -232,23 +232,34 @@ struct AccountsListView: View {
         }
         .navigationTitle("Conti")
         .toolbar {
+            // Accanto a "Trasferisci": con `.secondaryAction` su Mac finirebbe al centro della toolbar.
+            // Prima nel codice, quindi a sinistra, anche quando "Trasferisci" è quello del dettaglio.
             ToolbarItem(placement: .primaryAction) {
-                Button("Trasferisci", systemImage: "arrow.left.arrow.right") {
-                    if model.canTransfer {
-                        router.newTransfer()
-                    } else {
-                        isShowingTooFewAccounts = true
-                    }
-                }
-            }
-            ToolbarItem(placement: .secondaryAction) {
                 Button("Gestisci conti", systemImage: "slider.horizontal.3") {
                     router.isAccountManagementPresented = true
+                }
+            }
+            if !detailShowsTransferButton {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Trasferisci", systemImage: "arrow.left.arrow.right") {
+                        if model.canTransfer {
+                            router.newTransfer()
+                        } else {
+                            isShowingTooFewAccounts = true
+                        }
+                    }
                 }
             }
         }
         .tooFewAccountsAlert(isPresented: $isShowingTooFewAccounts)
         .task { await model.observeBalances() }
+    }
+
+    /// Con elenco e dettaglio affiancati (iPad e Mac) le toolbar si vedono insieme, e su Mac sono
+    /// una sola: se il dettaglio mostra un conto attivo, il suo "Trasferisci" basta e parte già da quel conto.
+    private var detailShowsTransferButton: Bool {
+        guard selection != nil, case .account(let id) = router.accountsPath.last else { return false }
+        return model.activeBalances.contains { $0.account.id == id }
     }
 
     private func row(_ balance: AccountBalance) -> some View {

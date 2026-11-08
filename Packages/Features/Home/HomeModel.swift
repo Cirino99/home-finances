@@ -7,29 +7,34 @@ import Observation
 @MainActor
 @Observable
 public final class HomeModel {
-    /// Le ultime operazioni sono le più recenti in assoluto, non quelle del mese selezionato.
+    /// Le ultime operazioni sono le più recenti in assoluto, non quelle del mese selezionato,
+    /// trasferimenti compresi.
     public static let recentLimit = 3
 
     public private(set) var today: Day
     public private(set) var month: YearMonth
     public private(set) var totals = PeriodTotals()
-    public private(set) var recent: [OperationListItem] = []
+    /// Operazioni e trasferimenti (§ 8.2).
+    public private(set) var recent: [MovementListItem] = []
     public private(set) var currency: String?
     public private(set) var hasLoadedRecent = false
     public private(set) var loadFailed = false
 
     private let operations: any OperationRepository
+    private let movements: any MovementRepository
     private let accounts: any AccountRepository
     private let now: () -> Date
     private let calendar: Calendar
 
     public init(
         operations: any OperationRepository,
+        movements: any MovementRepository,
         accounts: any AccountRepository,
         now: @escaping () -> Date = { Date() },
         calendar: Calendar = .current
     ) {
         self.operations = operations
+        self.movements = movements
         self.accounts = accounts
         self.now = now
         self.calendar = calendar
@@ -98,7 +103,7 @@ public final class HomeModel {
 
     public func observeRecent() async {
         do {
-            for try await value in operations.observeRecent(limit: Self.recentLimit) {
+            for try await value in movements.observeRecentMovements(limit: Self.recentLimit) {
                 recent = value
                 hasLoadedRecent = true
             }

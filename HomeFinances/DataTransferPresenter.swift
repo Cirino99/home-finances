@@ -51,6 +51,8 @@ struct DataTransferPresenter: ViewModifier {
                     appLock: appLock,
                     categories: database.categories,
                     accounts: database.accounts,
+                    transfers: database.transfers,
+                    movements: database.movements,
                     hasBackup: store.hasBackup,
                     isIncludedInSystemBackup: store.systemBackupBinding
                 )

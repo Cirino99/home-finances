@@ -7,6 +7,8 @@ public struct SettingsView: View {
     private let appLock: AppLock
     private let categories: any CategoryRepository
     private let accounts: any AccountRepository
+    private let transfers: any TransferRepository
+    private let movements: any MovementRepository
     private let hasBackup: Bool
     @Binding private var isIncludedInSystemBackup: Bool
     @State private var currency: String?
@@ -22,12 +24,16 @@ public struct SettingsView: View {
         appLock: AppLock,
         categories: any CategoryRepository,
         accounts: any AccountRepository,
+        transfers: any TransferRepository,
+        movements: any MovementRepository,
         hasBackup: Bool,
         isIncludedInSystemBackup: Binding<Bool>
     ) {
         self.appLock = appLock
         self.categories = categories
         self.accounts = accounts
+        self.transfers = transfers
+        self.movements = movements
         self.hasBackup = hasBackup
         _isIncludedInSystemBackup = isIncludedInSystemBackup
     }
@@ -115,7 +121,7 @@ public struct SettingsView: View {
                 CategoriesView(repository: categories)
             }
             NavigationLink("Gestisci conti") {
-                AccountsCatalogView(repository: accounts, currency: currency)
+                AccountsCatalogView(repository: accounts, transfers: transfers, movements: movements, currency: currency)
             }
             Button("Esporta database") { request(.exportDatabase) }
             Button("Importa database") { request(.importDatabase) }

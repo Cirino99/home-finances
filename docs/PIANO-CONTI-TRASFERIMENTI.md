@@ -139,7 +139,7 @@ Sheet con `NavigationStack` e `Form`, come l'editor di operazione (§ 8.5). Tito
 ### 2.9 Conti archiviati e cancellazione
 
 - Un conto con operazioni **o trasferimenti** collegati si archivia invece di cancellarsi. Oggi il controllo guarda solo `operation`: va esteso a `transfer`.
-- Archiviare un conto con saldo diverso da zero mostra un avviso: "Su questo conto restano 120,00 €. Prima di archiviarlo puoi trasferirli su un altro conto." con i pulsanti "Trasferisci" e "Archivia comunque".
+- Rimuovere un conto con saldo diverso da zero, che venga cancellato o archiviato, mostra prima un avviso: "Su questo conto restano 120,00 €. Prima di rimuoverlo puoi trasferirli su un altro conto." con i pulsanti "Trasferisci" e "Rimuovi comunque". L'editor si apre sopra la schermata dei conti, perché su Mac le Impostazioni sono una finestra a parte.
 
 ### 2.10 Export, import e CSV
 

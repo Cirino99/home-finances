@@ -532,7 +532,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 
 - **Cambia PIN:** chiede il PIN attuale e quello nuovo (con conferma). Poi salva nel Keychain un nuovo salt e il nuovo hash, e azzera il contatore dei tentativi.
 - **Gestisci categorie:** elenco diviso per Entrate/Uscite. Si possono aggiungere, rinominare, scegliere icona e colore, riordinare e archiviare.
-- **Gestisci conti:** stesse funzioni. Archiviare un conto con saldo diverso da zero mostra un avviso: "Su questo conto restano [saldo]. Prima di archiviarlo puoi trasferirli su un altro conto.", con i pulsanti "Trasferisci" e "Archivia comunque".
+- **Gestisci conti:** stesse funzioni. Rimuovere un conto con saldo diverso da zero, che venga cancellato o archiviato, mostra prima un avviso: "Su questo conto restano [saldo]. Prima di rimuoverlo puoi trasferirli su un altro conto.", con i pulsanti "Trasferisci" (solo se c'è un altro conto attivo) e "Rimuovi comunque". L'editor si apre sopra la schermata dei conti, perché su Mac le Impostazioni sono una finestra a parte.
 
 ### 8.7 Conti
 
