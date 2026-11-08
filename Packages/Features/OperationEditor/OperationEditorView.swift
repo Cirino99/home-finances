@@ -86,7 +86,7 @@ public struct OperationEditorView: View {
             }
 
             Section {
-                DatePicker("Data", selection: $model.date, displayedComponents: .date)
+                DateField("Data", selection: $model.date)
                 if model.showsAccountPicker {
                     Picker("Conto", selection: $model.accountID) {
                         ForEach(model.visibleAccounts) { account in

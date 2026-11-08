@@ -105,7 +105,7 @@ public struct TransferEditorView: View {
             }
 
             Section {
-                DatePicker("Data", selection: $model.date, displayedComponents: .date)
+                DateField("Data", selection: $model.date)
             }
 
             Section {
