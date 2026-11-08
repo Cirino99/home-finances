@@ -141,7 +141,7 @@ public struct HomeView: View {
             } else {
                 Section("Ultime operazioni") {
                     ForEach(model.recent) { item in
-                        NavigationLink(value: route(of: item.id)) {
+                        NavigationLink(value: HomeRoute(item.id)) {
                             MovementRow(item: item, today: model.today)
                         }
                     }
@@ -161,13 +161,6 @@ public struct HomeView: View {
                 Text("Non è stato possibile caricare i dati.")
                     .foregroundStyle(.secondary)
             }
-        }
-    }
-
-    private func route(of id: MovementID) -> HomeRoute {
-        switch id {
-        case .operation(let id): .operation(id)
-        case .transfer(let id): .transfer(id)
         }
     }
 }

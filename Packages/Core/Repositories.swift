@@ -90,9 +90,17 @@ public extension MovementRepository {
 
     /// Tutti i movimenti, per l'export CSV.
     func allMovements() async throws -> [MovementListItem] {
-        for try await items in observeMovements(MovementQuery(limit: .max)) {
-            return items
+        try await observeMovements(MovementQuery(limit: .max)).currentValue()
+    }
+}
+
+public extension AsyncThrowingStream where Failure == any Error {
+    /// Il valore attuale: le letture reattive dei repository lo emettono subito, prima dei cambiamenti.
+    /// Lancia `CancellationError` se la lettura finisce senza emettere nulla.
+    func currentValue() async throws -> Element {
+        for try await value in self {
+            return value
         }
-        return []
+        throw CancellationError()
     }
 }

@@ -2,31 +2,10 @@ import Core
 import DesignSystem
 import SwiftUI
 
-/// Elenco con selezione nella colonna di una split view, senza selezione in uno stack.
-struct HistoryList<Content: View>: View {
-    let selection: Binding<HistoryRoute?>?
-    @ViewBuilder let content: Content
+/// Elenco dello Storico: con selezione nella colonna di una split view, senza in uno stack.
+typealias HistoryList<Content: View> = SelectableList<HistoryRoute, Content>
 
-    var body: some View {
-        if let selection {
-            List(selection: selection) { content }
-                #if os(macOS)
-                // Con lo stile predefinito, su Mac le righe di questi elenchi risultano tagliate.
-                .listStyle(.sidebar)
-                #endif
-                .environment(\.defaultMinListRowHeight, 52)
-        } else {
-            List { content }
-                #if os(macOS)
-                .listStyle(.sidebar)
-                #endif
-                .environment(\.defaultMinListRowHeight, 52)
-        }
-    }
-}
-
-/// Riga che apre `route`: nella colonna con selezione basta il tag. Altrove, su iPhone e iPad è un
-/// link dello stack; su Mac il dettaglio non ha uno stack, quindi aggiunge `route` al percorso.
+/// Riga che apre `route` nello Storico. Su Mac il dettaglio non ha uno stack: la route si aggiunge al percorso.
 struct HistoryRouteRow<Content: View>: View {
     let route: HistoryRoute
     let isSelectable: Bool
@@ -34,25 +13,8 @@ struct HistoryRouteRow<Content: View>: View {
     @Environment(AppRouter.self) private var router
 
     var body: some View {
-        if isSelectable {
-            content.tag(route)
-        } else {
-            #if os(macOS)
-            Button {
-                router.historyPath.append(route)
-            } label: {
-                HStack {
-                    content
-                    Image(systemName: "chevron.right")
-                        .font(.footnote)
-                        .foregroundStyle(.tertiary)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            #else
-            NavigationLink(value: route) { content }
-            #endif
+        RouteRow(route: route, isSelectable: isSelectable, open: { router.historyPath.append($0) }) {
+            content
         }
     }
 }
@@ -218,7 +180,7 @@ struct OperationListView: View {
     }
 
     private func row(_ item: MovementListItem) -> some View {
-        HistoryRouteRow(route: route(of: item.id), isSelectable: selection != nil) {
+        HistoryRouteRow(route: HistoryRoute(item.id), isSelectable: selection != nil) {
             MovementRow(item: item, today: today, account: model.accountID)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -236,23 +198,13 @@ struct OperationListView: View {
         }
     }
 
-    private func route(of id: MovementID) -> HistoryRoute {
-        switch id {
-        case .operation(let id): .operation(id)
-        case .transfer(let id): .transfer(id)
-        }
-    }
-
     private func edit(_ id: MovementID) {
-        switch id {
-        case .operation(let id): router.editor = .edit(id)
-        case .transfer(let id): router.editor = .editTransfer(id)
-        }
+        router.editor = EditorRequest(editing: id)
     }
 
     private func delete(_ id: MovementID) {
         // Un dettaglio aperto su questo movimento non avrebbe più nulla da mostrare.
-        let route = route(of: id)
+        let route = HistoryRoute(id)
         router.historyPath.removeAll { $0 == route }
         Task { await model.delete(id) }
     }

@@ -164,9 +164,6 @@ public enum CSVDocument {
 public extension OperationRepository {
     /// Tutte le operazioni, per l'export.
     func allItems() async throws -> [OperationListItem] {
-        for try await items in observeItems(OperationQuery(limit: .max)) {
-            return items
-        }
-        return []
+        try await observeItems(OperationQuery(limit: .max)).currentValue()
     }
 }

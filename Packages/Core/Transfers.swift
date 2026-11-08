@@ -195,7 +195,7 @@ public struct MovementQuery: Equatable, Sendable {
     public static let defaultPageSize = OperationQuery.defaultPageSize
 
     public var month: YearMonth?
-    /// Cerca nella nota, nel nome della categoria e nei nomi dei conti di un trasferimento.
+    /// Cerca nella nota, nel nome della categoria e nel nome del conto, o dei due conti di un trasferimento.
     public var searchText: String?
     public var kind: MovementKind?
     public var categoryID: CategoryID?

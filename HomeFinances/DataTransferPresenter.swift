@@ -1,5 +1,6 @@
 import AppSecurity
 import Core
+import DesignSystem
 import LockFeature
 import Persistence
 import SettingsFeature

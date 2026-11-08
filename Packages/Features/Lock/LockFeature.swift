@@ -1,4 +1,5 @@
 import AppSecurity
+import DesignSystem
 import SwiftUI
 
 /// Mostra `content` solo ad app sbloccata; altrimenti onboarding o schermata di blocco (§ 5.4, § 8.1).
@@ -35,23 +36,5 @@ public struct LockGate<Content: View>: View {
             }
         }
         .appLockLifecycle(appLock)
-    }
-}
-
-public extension View {
-    /// Copre il contenuto nello switcher app (§ 9). Da applicare anche agli sheet, che restano sopra la radice.
-    func privacyCover(_ isCovered: Bool) -> some View {
-        overlay {
-            if isCovered {
-                ZStack {
-                    Rectangle().fill(.ultraThickMaterial)
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 56))
-                        .foregroundStyle(.secondary)
-                }
-                .ignoresSafeArea()
-                .accessibilityHidden(true)
-            }
-        }
     }
 }

@@ -91,13 +91,17 @@ public struct TransferEditorView: View {
                         accountLabel(account).tag(Optional(account.id))
                     }
                 }
+                // "Da" e "A" bastano a schermo, accanto ai conti; letti da soli servono parole intere.
+                .accessibilityLabel("Dal conto")
                 Button("Inverti", systemImage: "arrow.up.arrow.down", action: model.swapAccounts)
                     .disabled(model.fromAccountID == nil || model.toAccountID == nil)
+                    .accessibilityHint("Scambia il conto di origine e quello di destinazione")
                 Picker("A", selection: $model.toAccountID) {
                     ForEach(model.destinationAccounts) { account in
                         accountLabel(account).tag(Optional(account.id))
                     }
                 }
+                .accessibilityLabel("Al conto")
             }
 
             Section {

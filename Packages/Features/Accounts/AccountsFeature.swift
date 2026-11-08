@@ -8,11 +8,6 @@ import SwiftUI
 public struct AccountsView: View {
     private let repositories: AccountsRepositories
     @Environment(AppRouter.self) private var router
-    #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    #else
-    @AppStorage("accountsListWidth") private var listWidth = 340.0
-    #endif
 
     public init(
         operations: any OperationRepository,
@@ -23,97 +18,24 @@ public struct AccountsView: View {
     }
 
     public var body: some View {
-        #if os(macOS)
-        // Come nello Storico: colonne affiancate, perché una split view annidata nella sidebar sposta il dettaglio.
-        HStack(spacing: 0) {
-            NavigationStack {
-                AccountsListView(repositories: repositories, selection: selection)
-            }
-            .frame(width: listWidth)
-            ColumnResizeHandle(width: $listWidth, range: 260...560)
-            detail
-                .frame(minWidth: 280, maxWidth: .infinity, maxHeight: .infinity)
-        }
-        #else
         @Bindable var router = router
-        if horizontalSizeClass == .regular {
-            NavigationSplitView {
-                AccountsListView(repositories: repositories, selection: selection)
-                    .navigationSplitViewColumnWidth(min: 300, ideal: 360, max: 460)
-            } detail: {
-                detail
+        SplitNavigation(
+            path: $router.accountsPath,
+            listWidthKey: "accountsListWidth",
+            defaultListWidth: 340,
+            listWidthRange: 260...560,
+            placeholder: "Seleziona un conto",
+            placeholderSymbol: "building.columns",
+            // Il dettaglio di un conto ha già il nome come titolo: la barra serve solo per tornare indietro.
+            detailTitle: { route in
+                if case .account = route { nil } else { String(localized: "Dettaglio") }
             }
-        } else {
-            NavigationStack(path: $router.accountsPath) {
-                AccountsListView(repositories: repositories, selection: nil)
-                    .navigationDestination(for: AccountsRoute.self, destination: destination)
-            }
-        }
-        #endif
-    }
-
-    private var selection: Binding<AccountsRoute?> {
-        Binding(
-            get: { router.accountsPath.first },
-            set: { route in router.accountsPath = route.map { [$0] } ?? [] }
-        )
-    }
-
-    #if os(macOS)
-    /// Mostra direttamente l'ultimo elemento del percorso, come il dettaglio dello Storico.
-    @ViewBuilder
-    private var detail: some View {
-        if let route = router.accountsPath.last {
+        ) { selection in
+            AccountsListView(repositories: repositories, selection: selection)
+        } destination: { route in
             destination(route)
-                .id(route)
-                .safeAreaInset(edge: .top, spacing: 0) {
-                    if router.accountsPath.count > 1 {
-                        HStack(spacing: 8) {
-                            Button("Indietro", systemImage: "chevron.left") {
-                                router.accountsPath.removeLast()
-                            }
-                            .labelStyle(.iconOnly)
-                            .buttonStyle(.borderless)
-                            .keyboardShortcut("[", modifiers: .command)
-                            Text("Dettaglio")
-                                .font(.headline)
-                            Spacer()
-                        }
-                        .padding(.horizontal)
-                        .padding(.vertical, 8)
-                        .background(.bar)
-                    }
-                }
-        } else {
-            ContentUnavailableView("Seleziona un conto", systemImage: "building.columns")
         }
     }
-    #else
-    /// Ciò che si è aperto dentro il dettaglio, oltre al conto selezionato.
-    private var detailPath: Binding<[AccountsRoute]> {
-        Binding(
-            get: { Array(router.accountsPath.dropFirst()) },
-            set: { path in
-                if let first = router.accountsPath.first {
-                    router.accountsPath = [first] + path
-                }
-            }
-        )
-    }
-
-    @ViewBuilder
-    private var detail: some View {
-        if let route = router.accountsPath.first {
-            NavigationStack(path: detailPath) {
-                destination(route)
-                    .navigationDestination(for: AccountsRoute.self, destination: destination)
-            }
-            .id(route)
-        } else {
-            ContentUnavailableView("Seleziona un conto", systemImage: "building.columns")
-        }
-    }
-    #endif
 
     @ViewBuilder
     private func destination(_ route: AccountsRoute) -> some View {
@@ -132,8 +54,7 @@ public struct AccountsView: View {
     }
 }
 
-/// Riga che apre `route`, come `HistoryRouteRow` nello Storico: nella colonna con selezione basta il tag;
-/// altrove è un link dello stack, o su Mac aggiunge `route` al percorso.
+/// Riga che apre `route` nel tab Conti. Su Mac il dettaglio non ha uno stack: la route si aggiunge al percorso.
 struct AccountsRouteRow<Content: View>: View {
     let route: AccountsRoute
     let isSelectable: Bool
@@ -141,48 +62,14 @@ struct AccountsRouteRow<Content: View>: View {
     @Environment(AppRouter.self) private var router
 
     var body: some View {
-        if isSelectable {
-            content.tag(route)
-        } else {
-            #if os(macOS)
-            Button {
-                router.accountsPath.append(route)
-            } label: {
-                HStack {
-                    content
-                    Image(systemName: "chevron.right")
-                        .font(.footnote)
-                        .foregroundStyle(.tertiary)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            #else
-            NavigationLink(value: route) { content }
-            #endif
+        RouteRow(route: route, isSelectable: isSelectable, open: { router.accountsPath.append($0) }) {
+            content
         }
     }
 }
 
-/// Elenco con selezione nella colonna di una split view, senza selezione in uno stack.
-struct AccountsList<Content: View>: View {
-    let selection: Binding<AccountsRoute?>?
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        if let selection {
-            List(selection: selection) { content }
-                #if os(macOS)
-                .listStyle(.sidebar)
-                #endif
-        } else {
-            List { content }
-                #if os(macOS)
-                .listStyle(.sidebar)
-                #endif
-        }
-    }
-}
+/// Elenco del tab Conti: con selezione nella colonna di una split view, senza in uno stack.
+typealias AccountsList<Content: View> = SelectableList<AccountsRoute, Content>
 
 // MARK: Elenco dei conti
 
@@ -214,10 +101,30 @@ struct AccountsListView: View {
                 }
             }
             if !model.archivedBalances.isEmpty {
-                Section("Archiviati", isExpanded: $showsArchived) {
-                    ForEach(model.archivedBalances) { balance in
-                        row(balance)
+                // Non `Section(isExpanded:)`: su iOS si apre e chiude solo con lo stile `.sidebar`,
+                // e con quello predefinito la sezione resterebbe chiusa per sempre.
+                Section {
+                    if showsArchived {
+                        ForEach(model.archivedBalances) { balance in
+                            row(balance)
+                        }
                     }
+                } header: {
+                    Button {
+                        withAnimation { showsArchived.toggle() }
+                    } label: {
+                        HStack {
+                            Text("Archiviati")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .rotationEffect(.degrees(showsArchived ? 90 : 0))
+                                .accessibilityHidden(true)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityValue(showsArchived ? "Aperta" : "Chiusa")
+                    .accessibilityHint("Mostra o nasconde i conti archiviati con un saldo")
                 }
             }
         }
@@ -297,7 +204,8 @@ struct AccountDetailView: View {
                 ProgressView()
             }
         }
-        .navigationTitle(model.balance?.account.name ?? "")
+        // Mai vuoto, nemmeno durante il caricamento o se il conto non c'è più (HIG, VoiceOver).
+        .navigationTitle(model.balance?.account.name ?? String(localized: "Conto"))
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
@@ -334,7 +242,7 @@ struct AccountDetailView: View {
                         .foregroundStyle(.secondary)
                 }
                 ForEach(model.recent) { item in
-                    AccountsRouteRow(route: route(of: item.id), isSelectable: false) {
+                    AccountsRouteRow(route: AccountsRoute(item.id), isSelectable: false) {
                         MovementRow(item: item, today: today, account: model.accountID)
                     }
                 }
@@ -355,13 +263,6 @@ struct AccountDetailView: View {
 
     private var today: Day {
         Day(containing: Date())
-    }
-
-    private func route(of id: MovementID) -> AccountsRoute {
-        switch id {
-        case .operation(let id): .operation(id)
-        case .transfer(let id): .transfer(id)
-        }
     }
 }
 
@@ -394,18 +295,31 @@ struct BalanceHeader: View {
 /// Nome e saldo di un conto nell'elenco.
 struct AccountBalanceRow: View {
     let balance: AccountBalance
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack {
+        // Con le dimensioni di accessibilità nome e saldo non stanno su una riga: si impilano (§ 9).
+        let isLarge = dynamicTypeSize.isAccessibilitySize
+        let layout = isLarge
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout())
+        layout {
             Text(balance.account.name)
-                .lineLimit(2)
-            Spacer()
-            Text(MoneyFormat.string(minorUnits: balance.balance, currency: balance.account.currency, signed: true))
+                .lineLimit(isLarge ? nil : 2)
+            if !isLarge {
+                Spacer()
+            }
+            Text(amountText)
                 .monospacedDigit()
                 .foregroundStyle(balance.balance < 0 ? Color.expense : Color.primary)
         }
         .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(balance.account.name), saldo \(amountText)")
+    }
+
+    private var amountText: String {
+        MoneyFormat.string(minorUnits: balance.balance, currency: balance.account.currency, signed: true)
     }
 }
 

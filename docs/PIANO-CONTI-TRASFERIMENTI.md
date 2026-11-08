@@ -2,6 +2,7 @@
 
 > Funzionalità nuova, dopo la v1. Le specifiche di riferimento sono in [SPECIFICHE.md](SPECIFICHE.md): i rimandi `§` puntano lì.
 > Versione 1.0 — 7 novembre 2026: tutte le decisioni del § 4 sono confermate.
+> Stato — 8 novembre 2026: sviluppo completato, step 0–7 (§ 3.3).
 
 ---
 
@@ -203,6 +204,19 @@ Ogni step si chiude con il codice che compila e i test che passano. Compilazione
 - iPhone, iPad (regolare e Split View) e Mac (finestra al minimo) per il tab Conti.
 
 ---
+
+### 3.3 Stato
+
+| Step | Commit | Note |
+|---|---|---|
+| 0 | `e90bcb0` | |
+| 1 | `10afa87` | Le route del router arrivano con gli step che le usano |
+| 2 | `88ee4d7` | Lo schema di un file importato si confronta con quello della stessa versione, non solo dell'ultima |
+| 3 | `e82ce0e` | Campo importo condiviso nel DesignSystem |
+| 4 | `550abf5` | |
+| 5 | `93209c6` | Gestisci conti apre la schermata delle Impostazioni, presentata dalla radice. Niente "Trasferisci" sui conti archiviati |
+| 6 | `850dea9` | L'avviso vale per qualsiasi rimozione, non solo per l'archiviazione. Gestisci conti mostra il saldo attuale. Un solo "Trasferisci" con elenco e dettaglio affiancati |
+| 7 | — | VoiceOver e Dynamic Type sulle righe dei conti e nell'editor, test e prove manuali nelle specifiche (§ 11), README. Dalla revisione del codice: copertura nello switcher anche per gli sheet annidati, sezione Archiviati apribile su iPhone, ricerca per conto anche sulle operazioni, saldo letto al momento della rimozione, navigazione comune a Storico e Conti nel DesignSystem |
 
 ## 4. Decisioni
 

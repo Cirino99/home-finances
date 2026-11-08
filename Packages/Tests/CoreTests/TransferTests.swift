@@ -246,3 +246,31 @@ struct AppRouterAccountFilterTests {
         #expect(router.pendingHistoryAccountFilter == nil)
     }
 }
+
+struct MovementRouteTests {
+    @Test func routesAndEditorFollowTheMovementKind() {
+        let operation = OperationID()
+        let transfer = TransferID()
+
+        #expect(HistoryRoute(.operation(operation)) == .operation(operation))
+        #expect(HistoryRoute(.transfer(transfer)) == .transfer(transfer))
+        #expect(AccountsRoute(.transfer(transfer)) == .transfer(transfer))
+        #expect(HomeRoute(.operation(operation)) == .operation(operation))
+        #expect(EditorRequest(editing: .operation(operation)) == .edit(operation))
+        #expect(EditorRequest(editing: .transfer(transfer)) == .editTransfer(transfer))
+    }
+
+    @Test func currentValueIsTheFirstEmission() async throws {
+        let stream = AsyncThrowingStream<Int, any Error> { continuation in
+            continuation.yield(1)
+            continuation.yield(2)
+            continuation.finish()
+        }
+        #expect(try await stream.currentValue() == 1)
+
+        let empty = AsyncThrowingStream<Int, any Error> { $0.finish() }
+        await #expect(throws: CancellationError.self) {
+            _ = try await empty.currentValue()
+        }
+    }
+}

@@ -47,11 +47,13 @@ struct CategoriesView: View {
             CategoryEditor(name: category.name, symbol: category.symbol, color: category.color) { name, symbol, color in
                 try await repository.update(category.id, name: name, symbol: symbol, color: color)
             }
+            .inheritedPrivacyCover()
         }
         .sheet(item: $creating) { new in
             CategoryEditor(name: "", symbol: "tag", color: .blue) { name, symbol, color in
                 try await repository.create(name: name, kind: new.kind, symbol: symbol, color: color)
             }
+            .inheritedPrivacyCover()
         }
         .catalogErrorAlert($errorMessage)
         .task {
@@ -136,6 +138,14 @@ public struct AccountsCatalogView: View {
         let id: AccountID
     }
 
+    /// Conto da rimuovere che ha ancora un saldo, letto al momento della richiesta.
+    private struct PendingRemoval: Identifiable {
+        let account: Account
+        let balance: Int64
+
+        var id: AccountID { account.id }
+    }
+
     private let repository: any AccountRepository
     private let transfers: any TransferRepository
     private let movements: any MovementRepository
@@ -143,7 +153,7 @@ public struct AccountsCatalogView: View {
     @State private var accounts: [Account] = []
     @State private var balances: [AccountID: Int64] = [:]
     @State private var editing: Editing?
-    @State private var pendingRemoval: Account?
+    @State private var pendingRemoval: PendingRemoval?
     @State private var transferSource: TransferSource?
     @State private var errorMessage: String?
 
@@ -214,16 +224,19 @@ public struct AccountsCatalogView: View {
         }
         #endif
         .sheet(item: $editing) { editing in
-            switch editing {
-            case .new:
-                AccountEditor(name: "", initialBalance: 0, currency: newAccountCurrency) { name, balance in
-                    try await repository.create(name: name, currency: newAccountCurrency, initialBalance: balance)
-                }
-            case .existing(let account):
-                AccountEditor(name: account.name, initialBalance: account.initialBalance, currency: account.currency) { name, balance in
-                    try await repository.update(account.id, name: name, initialBalance: balance)
+            Group {
+                switch editing {
+                case .new:
+                    AccountEditor(name: "", initialBalance: 0, currency: newAccountCurrency) { name, balance in
+                        try await repository.create(name: name, currency: newAccountCurrency, initialBalance: balance)
+                    }
+                case .existing(let account):
+                    AccountEditor(name: account.name, initialBalance: account.initialBalance, currency: account.currency) { name, balance in
+                        try await repository.update(account.id, name: name, initialBalance: balance)
+                    }
                 }
             }
+            .inheritedPrivacyCover()
         }
         .confirmationDialog(
             "Il conto ha ancora un saldo",
@@ -237,15 +250,15 @@ public struct AccountsCatalogView: View {
             ),
             titleVisibility: .visible,
             presenting: pendingRemoval
-        ) { account in
-            if canTransfer(from: account) {
-                Button("Trasferisci") { transferSource = TransferSource(id: account.id) }
+        ) { removal in
+            if canTransfer(from: removal.account) {
+                Button("Trasferisci") { transferSource = TransferSource(id: removal.account.id) }
             }
             Button("Rimuovi comunque", role: .destructive) {
-                perform { _ = try await repository.remove(account.id) }
+                perform { _ = try await repository.remove(removal.account.id) }
             }
-        } message: { account in
-            let amount = MoneyFormat.string(minorUnits: balances[account.id] ?? 0, currency: account.currency)
+        } message: { removal in
+            let amount = MoneyFormat.string(minorUnits: removal.balance, currency: removal.account.currency)
             Text("Su questo conto restano \(amount). Prima di rimuoverlo puoi trasferirli su un altro conto.")
         }
         // Sopra questa schermata, che sia nelle Impostazioni o nel tab Conti: su Mac le Impostazioni
@@ -255,6 +268,7 @@ public struct AccountsCatalogView: View {
                 model: TransferEditorModel(from: source.id, transfers: transfers, movements: movements),
                 onSaved: {}
             )
+            .inheritedPrivacyCover()
         }
         .catalogErrorAlert($errorMessage)
         .task {
@@ -298,12 +312,17 @@ public struct AccountsCatalogView: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// Con un saldo diverso da zero si avvisa prima e si propone di trasferirlo (§ 8.6).
+    /// Con un saldo diverso da zero si avvisa prima e si propone di trasferirlo (§ 8.6). Il saldo si legge
+    /// adesso: quello osservato per le righe potrebbe non essere ancora arrivato, e senza saldo non si rimuove.
     private func remove(_ account: Account) {
-        if let balance = balances[account.id], balance != 0 {
-            pendingRemoval = account
-        } else {
-            perform { _ = try await repository.remove(account.id) }
+        perform {
+            let current = try await movements.observeBalances().currentValue()
+            let balance = current.first { $0.account.id == account.id }?.balance ?? 0
+            if balance != 0 {
+                pendingRemoval = PendingRemoval(account: account, balance: balance)
+            } else {
+                _ = try await repository.remove(account.id)
+            }
         }
     }
 

@@ -463,7 +463,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 
 **Segmento Operazioni:**
 - elenco di tutte le operazioni e dei trasferimenti, raggruppati per giorno con intestazioni ("Oggi", "Ieri", "Lunedì 26 ottobre");
-- `.searchable`: ricerca su nota, nome della categoria e nomi dei conti di un trasferimento;
+- `.searchable`: ricerca su nota, nome della categoria e nome del conto (per un trasferimento, dei due conti);
 - menu filtri in toolbar: tipo (Tutte/Entrate/Uscite/Trasferimenti), categoria, conto;
   - una categoria scelta esclude i trasferimenti, che non ne hanno;
   - il filtro per conto mostra i trasferimenti in cui il conto è origine o destinazione, con "−" se escono da quel conto e "+" se ci entrano. Senza filtro un trasferimento non ha segno;
@@ -700,7 +700,10 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
   - migrazioni;
   - CRUD;
   - vincoli (importo > 0, coerenza tipo/categoria, `RESTRICT` sulle FK);
-  - aggregati mensili e annuali, compresi i casi limite: fine mese, anni bisestili, mesi senza operazioni.
+  - aggregati mensili e annuali, compresi i casi limite: fine mese, anni bisestili, mesi senza operazioni;
+  - trasferimenti: vincoli (conti diversi, stessa valuta, `RESTRICT`), elenco dei movimenti con ordine, pagine, filtri e ricerca, saldi dei conti, totali del mese invariati;
+  - migrazione di un database `v1` con dati.
+- Feature (modelli `@Observable`): editor di operazione e di trasferimento, Home, Storico con i movimenti e i filtri, tab Conti.
 - `Security`:
   - verifica del PIN corretto e di uno errato;
   - progressione dei tempi di attesa;
@@ -711,12 +714,15 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 **Test di integrazione:**
 - apertura del DB su file reale in WAL, con letture concorrenti durante una scrittura;
 - export → import: i dati importati sono identici (conteggi e checksum per tabella), incluso `app_metadata`;
-- import di un file con schema precedente → migrazioni eseguite correttamente;
+- import di un file con schema precedente → migrazioni eseguite correttamente, anche di un file `v1` senza trasferimenti;
+- export → import con trasferimenti: stessi conti e stessi saldi;
 - import rifiutato in questi casi:
   - schema più recente;
   - file non SQLite;
   - file SQLite senza le tabelle attese;
   - `integrity_check` fallito;
+  - migrazioni non in sequenza, o schema diverso da quello della stessa versione;
+  - trasferimento da un conto a sé stesso;
 - errore simulato durante la sostituzione → ripristino automatico della copia di sicurezza, senza perdita di dati;
 - rotazione delle copie di sicurezza (ne restano 3) e "Annulla ultimo import";
 - export eseguito mentre è in corso una scrittura → file consistente.
@@ -727,7 +733,14 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 - onboarding;
 - inserimento di un'operazione da Home → presenza in Storico;
 - navigazione Anni → Mesi → Operazioni;
-- blocco al ritorno dal background.
+- blocco al ritorno dal background, anche con aperti l'editor di trasferimento o Gestisci conti;
+- trasferimento dal tab Conti → saldi aggiornati nei due conti → presente nello Storico e tra le ultime operazioni della Home;
+- filtro per conto nello Storico: segno giusto sui trasferimenti in entrata e in uscita, etichetta "Conto: …" che si chiude con la ×;
+- "Vedi tutte nello Storico" dal dettaglio di un conto → Storico già filtrato → togliendo il filtro compare tutto;
+- "Trasferisci" con un solo conto attivo → avviso e "Aggiungi un conto";
+- rimozione di un conto con saldo → avviso, "Trasferisci" e "Rimuovi comunque", anche dalla finestra delle Impostazioni su Mac;
+- su Mac e iPad un solo "Trasferisci" con un conto selezionato, e ⇧⌘N / ⌘3 da tastiera;
+- VoiceOver e dimensioni di accessibilità sulle righe dei trasferimenti e dei conti.
 
 **Prove manuali per piattaforma:** iPhone (compatto), iPad (regolare + Split View/Stage Manager), Mac (finestra ridimensionata al minimo).
 

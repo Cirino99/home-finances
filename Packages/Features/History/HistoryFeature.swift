@@ -8,11 +8,6 @@ import SwiftUI
 public struct HistoryView: View {
     private let repositories: HistoryRepositories
     @Environment(AppRouter.self) private var router
-    #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    #else
-    @AppStorage("historyListWidth") private var listWidth = 360.0
-    #endif
 
     public init(
         operations: any OperationRepository,
@@ -31,111 +26,29 @@ public struct HistoryView: View {
     }
 
     public var body: some View {
-        #if os(macOS)
-        // Niente `NavigationSplitView`: annidata nella sidebar dell'app, sposta il dettaglio
-        // verso destra lasciando un vuoto a sinistra. Affiancate così, le colonne restano al loro posto.
-        HStack(spacing: 0) {
-            NavigationStack {
-                HistoryRoot(repositories: repositories, selection: selection)
-            }
-            .frame(width: listWidth)
-            ColumnResizeHandle(width: $listWidth, range: 280...640)
-            detail
-                .frame(minWidth: 280, maxWidth: .infinity, maxHeight: .infinity)
-        }
-        #else
         @Bindable var router = router
-        if horizontalSizeClass == .regular {
-            NavigationSplitView {
-                HistoryRoot(repositories: repositories, selection: selection)
-                    .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 480)
-            } detail: {
-                detail
-            }
-        } else {
-            NavigationStack(path: $router.historyPath) {
-                HistoryRoot(repositories: repositories, selection: nil)
-                    .navigationDestination(for: HistoryRoute.self, destination: destination)
-            }
-        }
-        #endif
-    }
-
-    private var selection: Binding<HistoryRoute?> {
-        Binding(
-            get: { router.historyPath.first },
-            set: { route in router.historyPath = route.map { [$0] } ?? [] }
-        )
-    }
-
-    #if os(macOS)
-    /// Mostra direttamente l'ultimo elemento del percorso, senza uno stack di navigazione:
-    /// con due stack affiancati, aprire un elemento nel dettaglio faceva sparire la lista.
-    @ViewBuilder
-    private var detail: some View {
-        if let route = router.historyPath.last {
+        SplitNavigation(
+            path: $router.historyPath,
+            listWidthKey: "historyListWidth",
+            defaultListWidth: 360,
+            listWidthRange: 280...640,
+            placeholder: "Seleziona un elemento",
+            placeholderSymbol: "list.bullet.rectangle",
+            detailTitle: title(of:)
+        ) { selection in
+            HistoryRoot(repositories: repositories, selection: selection)
+        } destination: { route in
             destination(route)
-                .id(route)
-                .safeAreaInset(edge: .top, spacing: 0) {
-                    detailHeader(route)
-                }
-        } else {
-            ContentUnavailableView("Seleziona un elemento", systemImage: "list.bullet.rectangle")
         }
     }
 
-    private func detailHeader(_ route: HistoryRoute) -> some View {
-        HStack(spacing: 8) {
-            if router.historyPath.count > 1 {
-                Button("Indietro", systemImage: "chevron.left") {
-                    router.historyPath.removeLast()
-                }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderless)
-                .keyboardShortcut("[", modifiers: .command)
-            }
-            Text(title(of: route))
-                .font(.headline)
-            Spacer()
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(.bar)
-    }
-
-    private func title(of route: HistoryRoute) -> String {
+    private func title(of route: HistoryRoute) -> String? {
         switch route {
-        case .operation, .transfer: "Dettaglio"
+        case .operation, .transfer: String(localized: "Dettaglio")
         case .month(let month): DayFormat.monthTitle(month)
         case .year(let year): String(year)
         }
     }
-    #else
-    /// Ciò che si è aperto dentro il dettaglio, oltre alla selezione.
-    private var detailPath: Binding<[HistoryRoute]> {
-        Binding(
-            get: { Array(router.historyPath.dropFirst()) },
-            set: { path in
-                if let first = router.historyPath.first {
-                    router.historyPath = [first] + path
-                }
-            }
-        )
-    }
-
-    @ViewBuilder
-    private var detail: some View {
-        if let route = router.historyPath.first {
-            NavigationStack(path: detailPath) {
-                destination(route)
-                    .navigationDestination(for: HistoryRoute.self, destination: destination)
-            }
-            .id(route)
-        } else {
-            ContentUnavailableView("Seleziona un elemento", systemImage: "list.bullet.rectangle")
-        }
-    }
-    #endif
 
     @ViewBuilder
     private func destination(_ route: HistoryRoute) -> some View {

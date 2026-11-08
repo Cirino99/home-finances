@@ -141,3 +141,45 @@ public final class AppRouter {
         pendingHistoryAccountFilter = nil
     }
 }
+
+// MARK: Route da un movimento
+
+public extension HistoryRoute {
+    /// Il dettaglio di un movimento dello Storico.
+    init(_ movement: MovementID) {
+        switch movement {
+        case .operation(let id): self = .operation(id)
+        case .transfer(let id): self = .transfer(id)
+        }
+    }
+}
+
+public extension AccountsRoute {
+    /// Il dettaglio di un movimento di un conto.
+    init(_ movement: MovementID) {
+        switch movement {
+        case .operation(let id): self = .operation(id)
+        case .transfer(let id): self = .transfer(id)
+        }
+    }
+}
+
+public extension HomeRoute {
+    /// Il dettaglio di uno degli ultimi movimenti.
+    init(_ movement: MovementID) {
+        switch movement {
+        case .operation(let id): self = .operation(id)
+        case .transfer(let id): self = .transfer(id)
+        }
+    }
+}
+
+public extension EditorRequest {
+    /// L'editor giusto per modificare un movimento: di operazione o di trasferimento.
+    init(editing movement: MovementID) {
+        switch movement {
+        case .operation(let id): self = .edit(id)
+        case .transfer(let id): self = .editTransfer(id)
+        }
+    }
+}

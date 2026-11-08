@@ -59,12 +59,13 @@ public struct TransferRow: View {
         return MoneyFormat.string(minorUnits: transfer.amount, currency: transfer.currency)
     }
 
-    /// "Trasferimento, 200,00 €, da Conto principale a Risparmi, Oggi" (§ 8.8).
+    /// "Trasferimento, 200,00 €, da Conto principale a Risparmi, Oggi" (§ 8.8). Con un conto
+    /// di riferimento l'importo ha il segno, come a schermo: dice se i soldi escono o entrano.
     private var accessibilityText: String {
         let transfer = item.transfer
         let parts: [String?] = [
             String(localized: "Trasferimento"),
-            MoneyFormat.string(minorUnits: transfer.amount, currency: transfer.currency),
+            amountText,
             String(localized: "da \(item.fromAccountName) a \(item.toAccountName)"),
             DayFormat.relative(transfer.date, today: today),
             transfer.note,

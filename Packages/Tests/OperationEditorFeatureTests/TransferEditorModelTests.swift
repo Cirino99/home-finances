@@ -25,14 +25,22 @@ struct TransferEditorModelTests {
         savings = try await database.accounts.create(name: "Risparmi", currency: "EUR", initialBalance: 50000)
     }
 
+    /// Come lo sheet della radice: una richiesta di trasferimento diventa il modello dell'editor.
     func makeModel(_ request: EditorRequest) async throws -> TransferEditorModel {
-        let model = try #require(TransferEditorModel(
-            request: request,
-            transfers: database.transfers,
-            movements: database.movements,
-            now: today,
-            calendar: calendar
-        ))
+        let model: TransferEditorModel
+        switch request {
+        case .newTransfer(let account):
+            model = TransferEditorModel(
+                from: account, transfers: database.transfers, movements: database.movements, now: today, calendar: calendar
+            )
+        case .editTransfer(let id):
+            model = TransferEditorModel(
+                transferID: id, transfers: database.transfers, movements: database.movements, now: today, calendar: calendar
+            )
+        case .new, .edit:
+            Issue.record("Non è una richiesta di trasferimento")
+            throw CancellationError()
+        }
         await model.load()
         return model
     }
@@ -51,7 +59,6 @@ struct TransferEditorModelTests {
     @Test func operationRequestsAreNotTransfers() {
         for request in [EditorRequest.new(kind: nil), .edit(OperationID())] {
             #expect(!request.isTransfer)
-            #expect(TransferEditorModel(request: request, transfers: database.transfers, movements: database.movements) == nil)
         }
         #expect(EditorRequest.newTransfer(from: nil).isTransfer)
         #expect(EditorRequest.editTransfer(TransferID()).isTransfer)

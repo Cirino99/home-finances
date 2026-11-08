@@ -59,24 +59,6 @@ public final class TransferEditorModel {
         date = now
     }
 
-    /// Per lo sheet della radice: `nil` se la richiesta non riguarda un trasferimento.
-    public convenience init?(
-        request: EditorRequest,
-        transfers: any TransferRepository,
-        movements: any MovementRepository,
-        now: Date = Date(),
-        calendar: Calendar = .current
-    ) {
-        switch request {
-        case .newTransfer(let account):
-            self.init(from: account, transfers: transfers, movements: movements, now: now, calendar: calendar)
-        case .editTransfer(let id):
-            self.init(transferID: id, transfers: transfers, movements: movements, now: now, calendar: calendar)
-        case .new, .edit:
-            return nil
-        }
-    }
-
     // MARK: Dati mostrati
 
     public var isEditing: Bool {
@@ -150,7 +132,7 @@ public final class TransferEditorModel {
 
     public func load() async {
         do {
-            balances = try await firstValue(movements.observeBalances())
+            balances = try await movements.observeBalances().currentValue()
             if let transferID {
                 guard let transfer = try await transfers.transfer(transferID) else {
                     loadState = .failed
@@ -227,12 +209,5 @@ public final class TransferEditorModel {
             note: note
         )
         return (try? draft.validate()) == nil ? nil : draft
-    }
-
-    private func firstValue<Value: Sendable>(_ stream: AsyncThrowingStream<Value, any Error>) async throws -> Value {
-        for try await value in stream {
-            return value
-        }
-        throw CancellationError()
     }
 }

@@ -1,6 +1,7 @@
 import AccountsFeature
 import AppSecurity
 import Core
+import DesignSystem
 import HistoryFeature
 import HomeFeature
 import LockFeature
@@ -103,13 +104,20 @@ struct RootTabView: View {
     /// Un solo sheet per entrambi gli editor (§ 7.3): la richiesta dice quale mostrare.
     @ViewBuilder
     private func editor(for request: EditorRequest) -> some View {
-        if let model = TransferEditorModel(
-            request: request,
-            transfers: database.transfers,
-            movements: database.movements
-        ) {
-            TransferEditorView(model: model, onSaved: { savedCount += 1 })
-        } else {
+        // I modelli si costruiscono a ogni valutazione, ma `@State` tiene il primo: l'init si limita
+        // a salvare i repository, e la lettura dei dati parte da `load()` nella vista.
+        switch request {
+        case .newTransfer(let account):
+            TransferEditorView(
+                model: TransferEditorModel(from: account, transfers: database.transfers, movements: database.movements),
+                onSaved: { savedCount += 1 }
+            )
+        case .editTransfer(let id):
+            TransferEditorView(
+                model: TransferEditorModel(transferID: id, transfers: database.transfers, movements: database.movements),
+                onSaved: { savedCount += 1 }
+            )
+        case .new, .edit:
             OperationEditorView(
                 model: OperationEditorModel(
                     request: request,

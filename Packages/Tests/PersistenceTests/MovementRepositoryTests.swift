@@ -98,6 +98,18 @@ struct MovementRepositoryTests {
         #expect(category == [.operation(byNote.id)])
     }
 
+    /// Il campo dice "Nota, categoria o conto": il nome del conto trova anche le sue operazioni.
+    @Test func searchFindsOperationsByAccountName() async throws {
+        let fixture = try await Fixture()
+        let savings = try await fixture.addAccount("Libretto")
+        let onSavings = try await fixture.addOperation(.expense, amount: 100, on: "2026-11-01", account: savings)
+        try await fixture.addOperation(.expense, amount: 100, on: "2026-11-02")
+        let moved = try await fixture.addTransfer(amount: 100, on: "2026-11-03", from: fixture.account, to: savings)
+
+        let ids = try await fixture.movements(MovementQuery(searchText: "libretto")).map(\.id)
+        #expect(ids == [.transfer(moved.id), .operation(onSavings.id)])
+    }
+
     @Test func filtersByMonth() async throws {
         let fixture = try await Fixture()
         let savings = try await fixture.addAccount()

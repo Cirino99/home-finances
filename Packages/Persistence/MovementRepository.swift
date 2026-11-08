@@ -88,8 +88,9 @@ struct GRDBMovementRepository: MovementRepository {
                 arguments += [accountID.databaseValue]
             }
             if let searchPattern {
-                conditions.append(#"(o.note LIKE ? ESCAPE '\' OR c.name LIKE ? ESCAPE '\')"#)
-                arguments += [searchPattern, searchPattern]
+                // Anche il nome del conto, come per i trasferimenti: il campo invita a cercare per conto.
+                conditions.append(#"(o.note LIKE ? ESCAPE '\' OR c.name LIKE ? ESCAPE '\' OR a.name LIKE ? ESCAPE '\')"#)
+                arguments += [searchPattern, searchPattern, searchPattern]
             }
             parts.append(select(operationSelect, where: conditions))
         }
