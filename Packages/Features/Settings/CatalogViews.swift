@@ -1,5 +1,6 @@
 import Core
 import DesignSystem
+import OperationEditorFeature
 import SwiftUI
 
 /// Gestione delle categorie (§ 8.6): divise per tipo, con aggiunta, modifica, ordine e archiviazione.
@@ -46,11 +47,13 @@ struct CategoriesView: View {
             CategoryEditor(name: category.name, symbol: category.symbol, color: category.color) { name, symbol, color in
                 try await repository.update(category.id, name: name, symbol: symbol, color: color)
             }
+            .inheritedPrivacyCover()
         }
         .sheet(item: $creating) { new in
             CategoryEditor(name: "", symbol: "tag", color: .blue) { name, symbol, color in
                 try await repository.create(name: name, kind: new.kind, symbol: symbol, color: color)
             }
+            .inheritedPrivacyCover()
         }
         .catalogErrorAlert($errorMessage)
         .task {
@@ -116,8 +119,8 @@ struct CategoriesView: View {
     }
 }
 
-/// Gestione dei conti (§ 8.6).
-struct AccountsView: View {
+/// Gestione dei conti (§ 8.6). Pubblica: la apre anche il tab Conti, con "Gestisci conti" (§ 8.7).
+public struct AccountsCatalogView: View {
     private enum Editing: Identifiable {
         case new
         case existing(Account)
@@ -130,13 +133,48 @@ struct AccountsView: View {
         }
     }
 
-    let repository: any AccountRepository
-    let currency: String
+    /// Trasferimento proposto prima di rimuovere un conto con un saldo.
+    private struct TransferSource: Identifiable {
+        let id: AccountID
+    }
+
+    /// Conto da rimuovere che ha ancora un saldo, letto al momento della richiesta.
+    private struct PendingRemoval: Identifiable {
+        let account: Account
+        let balance: Int64
+
+        var id: AccountID { account.id }
+    }
+
+    private let repository: any AccountRepository
+    private let transfers: any TransferRepository
+    private let movements: any MovementRepository
+    private let currency: String?
     @State private var accounts: [Account] = []
+    @State private var balances: [AccountID: Int64] = [:]
     @State private var editing: Editing?
+    @State private var pendingRemoval: PendingRemoval?
+    @State private var transferSource: TransferSource?
     @State private var errorMessage: String?
 
-    var body: some View {
+    /// `currency` è la valuta dei conti nuovi; senza, quella dei conti esistenti (una sola in v1, § 6.1).
+    public init(
+        repository: any AccountRepository,
+        transfers: any TransferRepository,
+        movements: any MovementRepository,
+        currency: String? = nil
+    ) {
+        self.repository = repository
+        self.transfers = transfers
+        self.movements = movements
+        self.currency = currency
+    }
+
+    private var newAccountCurrency: String {
+        currency ?? accounts.first?.currency ?? "EUR"
+    }
+
+    public var body: some View {
         List {
             let active = accounts.filter { !$0.isArchived }
             Section {
@@ -186,16 +224,51 @@ struct AccountsView: View {
         }
         #endif
         .sheet(item: $editing) { editing in
-            switch editing {
-            case .new:
-                AccountEditor(name: "", initialBalance: 0, currency: currency) { name, balance in
-                    try await repository.create(name: name, currency: currency, initialBalance: balance)
-                }
-            case .existing(let account):
-                AccountEditor(name: account.name, initialBalance: account.initialBalance, currency: account.currency) { name, balance in
-                    try await repository.update(account.id, name: name, initialBalance: balance)
+            Group {
+                switch editing {
+                case .new:
+                    AccountEditor(name: "", initialBalance: 0, currency: newAccountCurrency) { name, balance in
+                        try await repository.create(name: name, currency: newAccountCurrency, initialBalance: balance)
+                    }
+                case .existing(let account):
+                    AccountEditor(name: account.name, initialBalance: account.initialBalance, currency: account.currency) { name, balance in
+                        try await repository.update(account.id, name: name, initialBalance: balance)
+                    }
                 }
             }
+            .inheritedPrivacyCover()
+        }
+        .confirmationDialog(
+            "Il conto ha ancora un saldo",
+            isPresented: Binding(
+                get: { pendingRemoval != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        pendingRemoval = nil
+                    }
+                }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingRemoval
+        ) { removal in
+            if canTransfer(from: removal.account) {
+                Button("Trasferisci") { transferSource = TransferSource(id: removal.account.id) }
+            }
+            Button("Rimuovi comunque", role: .destructive) {
+                perform { _ = try await repository.remove(removal.account.id) }
+            }
+        } message: { removal in
+            let amount = MoneyFormat.string(minorUnits: removal.balance, currency: removal.account.currency)
+            Text("Su questo conto restano \(amount). Prima di rimuoverlo puoi trasferirli su un altro conto.")
+        }
+        // Sopra questa schermata, che sia nelle Impostazioni o nel tab Conti: su Mac le Impostazioni
+        // sono una finestra a parte, e l'editor della finestra principale non si vedrebbe.
+        .sheet(item: $transferSource) { source in
+            TransferEditorView(
+                model: TransferEditorModel(from: source.id, transfers: transfers, movements: movements),
+                onSaved: {}
+            )
+            .inheritedPrivacyCover()
         }
         .catalogErrorAlert($errorMessage)
         .task {
@@ -207,22 +280,50 @@ struct AccountsView: View {
                 errorMessage = "Non è stato possibile caricare i conti."
             }
         }
+        .task {
+            do {
+                for try await value in movements.observeBalances() {
+                    balances = Dictionary(uniqueKeysWithValues: value.map { ($0.account.id, $0.balance) })
+                }
+            } catch {
+                errorMessage = "Non è stato possibile caricare i saldi dei conti."
+            }
+        }
     }
 
+    /// Serve un altro conto attivo su cui spostare il saldo.
+    private func canTransfer(from account: Account) -> Bool {
+        !account.isArchived && accounts.contains { !$0.isArchived && $0.id != account.id }
+    }
+
+    /// Saldo attuale, come nel tab Conti (§ 8.7). Il saldo iniziale si vede aprendo il conto.
     private func row(_ account: Account) -> some View {
         HStack {
             Text(account.name)
             Spacer()
-            Text(MoneyFormat.string(minorUnits: account.initialBalance, currency: account.currency))
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
+            if let balance = balances[account.id] {
+                Text(MoneyFormat.string(minorUnits: balance, currency: account.currency, signed: true))
+                    .monospacedDigit()
+                    .foregroundStyle(balance < 0 ? Color.expense : Color.primary)
+                    .accessibilityLabel("Saldo attuale: \(MoneyFormat.string(minorUnits: balance, currency: account.currency))")
+            }
         }
         .contentShape(Rectangle())
-        .accessibilityHint("Saldo iniziale")
+        .accessibilityElement(children: .combine)
     }
 
+    /// Con un saldo diverso da zero si avvisa prima e si propone di trasferirlo (§ 8.6). Il saldo si legge
+    /// adesso: quello osservato per le righe potrebbe non essere ancora arrivato, e senza saldo non si rimuove.
     private func remove(_ account: Account) {
-        perform { _ = try await repository.remove(account.id) }
+        perform {
+            let current = try await movements.observeBalances().currentValue()
+            let balance = current.first { $0.account.id == account.id }?.balance ?? 0
+            if balance != 0 {
+                pendingRemoval = PendingRemoval(account: account, balance: balance)
+            } else {
+                _ = try await repository.remove(account.id)
+            }
+        }
     }
 
     private func perform(_ action: @escaping @MainActor () async throws -> Void) {

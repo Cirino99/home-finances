@@ -6,13 +6,20 @@ import SwiftUI
 /// Home (§ 8.2): riepilogo del mese, aggiunta rapida e ultime operazioni.
 public struct HomeView: View {
     private let operations: any OperationRepository
+    private let transfers: any TransferRepository
     @State private var model: HomeModel
     @Environment(AppRouter.self) private var router
     @Environment(\.scenePhase) private var scenePhase
 
-    public init(operations: any OperationRepository, accounts: any AccountRepository) {
+    public init(
+        operations: any OperationRepository,
+        transfers: any TransferRepository,
+        movements: any MovementRepository,
+        accounts: any AccountRepository
+    ) {
         self.operations = operations
-        _model = State(initialValue: HomeModel(operations: operations, accounts: accounts))
+        self.transfers = transfers
+        _model = State(initialValue: HomeModel(operations: operations, movements: movements, accounts: accounts))
     }
 
     public var body: some View {
@@ -33,8 +40,13 @@ public struct HomeView: View {
         .listSectionSpacing(.compact)
         #endif
         .navigationTitle("Home")
-        .navigationDestination(for: OperationID.self) { id in
-            OperationDetailView(id: id, operations: operations)
+        .navigationDestination(for: HomeRoute.self) { route in
+            switch route {
+            case .operation(let id):
+                OperationDetailView(id: id, operations: operations)
+            case .transfer(let id):
+                TransferDetailView(id: id, transfers: transfers)
+            }
         }
         .task(id: model.month) { await model.observeTotals() }
         .task { await model.observeRecent() }
@@ -129,8 +141,8 @@ public struct HomeView: View {
             } else {
                 Section("Ultime operazioni") {
                     ForEach(model.recent) { item in
-                        NavigationLink(value: item.id) {
-                            OperationRow(item: item, today: model.today)
+                        NavigationLink(value: HomeRoute(item.id)) {
+                            MovementRow(item: item, today: model.today)
                         }
                     }
                     Button {

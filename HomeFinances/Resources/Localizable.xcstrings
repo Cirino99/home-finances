@@ -13,19 +13,25 @@
     "Cerca" : {
 
     },
+    "Conti" : {
+
+    },
     "Dati" : {
 
     },
-    "Dati importati: %lld operazioni" : {
+    "Dati importati: %lld movimenti" : {
 
     },
-    "Dati ripristinati: %lld operazioni" : {
+    "Dati ripristinati: %lld movimenti" : {
 
     },
     "Esporta database…" : {
 
     },
     "File protetto" : {
+
+    },
+    "Fine" : {
 
     },
     "Home" : {
@@ -53,6 +59,9 @@
 
     },
     "Nuova operazione" : {
+
+    },
+    "Nuovo trasferimento" : {
 
     },
     "OK" : {

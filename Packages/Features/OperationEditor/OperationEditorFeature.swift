@@ -103,8 +103,8 @@ public final class OperationEditorModel {
 
     public func load() async {
         do {
-            categories = try await firstValue(categoryRepository.observeCategories(includingArchived: true))
-            accounts = try await firstValue(accountRepository.observeAccounts(includingArchived: true))
+            categories = try await categoryRepository.observeCategories(includingArchived: true).currentValue()
+            accounts = try await accountRepository.observeAccounts(includingArchived: true).currentValue()
 
             switch request {
             case .new:
@@ -123,6 +123,10 @@ public final class OperationEditorModel {
                 accountID = operation.accountID
                 date = operation.date.date(in: calendar) ?? date
                 note = operation.note ?? ""
+            case .newTransfer, .editTransfer:
+                // La radice apre `TransferEditorView` per queste richieste: qui non sono valide.
+                loadState = .failed
+                return
             }
             initialSnapshot = snapshot
             loadState = .ready
@@ -143,6 +147,8 @@ public final class OperationEditorModel {
                 try await operations.create(draft)
             case .edit(let id):
                 try await operations.update(id, with: draft)
+            case .newTransfer, .editTransfer:
+                return false
             }
             return true
         } catch {
@@ -191,16 +197,9 @@ public final class OperationEditorModel {
 
     /// Categoria dell'ultima operazione di questo tipo (§ 8.5), se non è stata archiviata.
     private func lastUsedCategory() async throws -> CategoryID? {
-        let latest = try await firstValue(operations.observeItems(OperationQuery(kind: kind, limit: 1)))
+        let latest = try await operations.observeItems(OperationQuery(kind: kind, limit: 1)).currentValue()
         guard let id = latest.first?.operation.categoryID,
               visibleCategories.contains(where: { $0.id == id }) else { return nil }
         return id
-    }
-
-    private func firstValue<Value: Sendable>(_ stream: AsyncThrowingStream<Value, any Error>) async throws -> Value {
-        for try await value in stream {
-            return value
-        }
-        throw CancellationError()
     }
 }

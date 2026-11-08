@@ -8,10 +8,11 @@ I dati restano sul dispositivo: nessun server, nessun account.
 ## Funzionalità
 
 - **Home:** entrate, uscite e saldo del mese, con le ultime operazioni e l'aggiunta rapida.
-- **Storico:** operazioni per giorno con ricerca e filtri, riepiloghi per mese e per anno con grafici.
+- **Storico:** operazioni e trasferimenti per giorno, con ricerca e filtri, anche per conto; riepiloghi per mese e per anno con grafici.
+- **Conti:** saldo totale e saldo di ogni conto, ultime movimentazioni di un conto e trasferimenti da un conto all'altro, che non contano come entrate o uscite.
 - **Blocco:** PIN a 6 cifre, Face ID o Touch ID, blocco automatico.
-- **Categorie e conti:** personalizzabili, con icona e colore.
-- **Trasferimento dei dati:** export e import del database tra i tuoi dispositivi, con protezione opzionale tramite password, ed export in CSV.
+- **Categorie e conti:** personalizzabili; le categorie con icona e colore.
+- **Export e import:** del database tra i tuoi dispositivi, con protezione opzionale tramite password, ed export in CSV.
 - **Accessibilità:** VoiceOver, Dynamic Type e modalità scura.
 
 ## Privacy e sicurezza
@@ -70,7 +71,7 @@ Packages/
   Persistence/   Database (GRDB), repository, export e import
   Security/      PIN, Keychain, biometria, blocco
   DesignSystem/  Componenti condivisi
-  Features/      Schermate: blocco, Home, Storico, editor, Impostazioni
+  Features/      Schermate: blocco, Home, Storico, Conti, editor, Impostazioni
   Tests/         Test
 Config/          Configurazione di build
 docs/            Specifiche

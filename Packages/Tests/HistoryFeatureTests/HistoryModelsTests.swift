@@ -18,6 +18,8 @@ struct HistoryModelsTests {
         self.database = database
         repositories = HistoryRepositories(
             operations: database.operations,
+            transfers: database.transfers,
+            movements: database.movements,
             categories: database.categories,
             accounts: database.accounts
         )
@@ -88,7 +90,7 @@ struct HistoryModelsTests {
 
         let model = OperationListModel(month: YearMonth(year: 2026, month: 10), repositories: repositories)
         try await load(model, expecting: 1)
-        #expect(model.items.first?.operation.amount == 2)
+        #expect(model.items.first?.signedAmount(for: nil) == -2)
 
         let task = Task { await model.observeTotals() }
         defer { task.cancel() }
@@ -139,13 +141,13 @@ struct HistoryModelsTests {
         searching.searchText = "caff"
         #expect(searching.isSearching)
         try await load(searching, expecting: 1)
-        #expect(searching.items.first?.id == coffee.id)
+        #expect(searching.items.first?.id == .operation(coffee.id))
 
         let filtering = OperationListModel(month: nil, repositories: repositories)
         filtering.kind = .income
         #expect(filtering.isFiltering)
         try await load(filtering, expecting: 1)
-        #expect(filtering.items.first?.id == salary.id)
+        #expect(filtering.items.first?.id == .operation(salary.id))
 
         filtering.clearFilters()
         #expect(!filtering.isFiltering)
@@ -173,17 +175,131 @@ struct HistoryModelsTests {
         defer { task.cancel() }
         try await waitUntil { model.items.count == 1 }
 
-        await model.delete(operation.id)
+        await model.delete(.operation(operation.id))
         #expect(!model.deleteFailed)
         try await waitUntil { model.items.isEmpty }
     }
 
     @Test func deleteFailureIsReported() async {
         let model = OperationListModel(month: nil, repositories: repositories)
-        await model.delete(OperationID())
+        await model.delete(.operation(OperationID()))
         #expect(model.deleteFailed)
         model.clearDeleteFailure()
         #expect(!model.deleteFailed)
+    }
+
+    // MARK: Trasferimenti
+
+    func addSavings() async throws -> Account {
+        try await database.accounts.create(name: "Risparmi", currency: "EUR", initialBalance: 0)
+    }
+
+    @discardableResult
+    func transfer(_ amount: Int64, on date: String, from: Account, to: Account) async throws -> AccountTransfer {
+        try await database.transfers.create(TransferDraft(
+            amount: amount,
+            date: try #require(Day(string: date)),
+            fromAccountID: from.id,
+            toAccountID: to.id
+        ))
+    }
+
+    @Test func listShowsTransfersWithOperations() async throws {
+        let savings = try await addSavings()
+        let operation = try await add(.expense, amount: 1, on: "2026-10-10")
+        let moved = try await transfer(500, on: "2026-10-11", from: account, to: savings)
+
+        let model = OperationListModel(month: nil, repositories: repositories)
+        try await load(model, expecting: 2)
+        #expect(model.items.map(\.id) == [.transfer(moved.id), .operation(operation.id)])
+        #expect(model.sections.map(\.day.string) == ["2026-10-11", "2026-10-10"])
+    }
+
+    @Test func transferKindShowsOnlyTransfersAndNoCategories() async throws {
+        let savings = try await addSavings()
+        try await add(.expense, amount: 1, on: "2026-10-10")
+        let moved = try await transfer(500, on: "2026-10-11", from: account, to: savings)
+
+        let model = OperationListModel(month: nil, repositories: repositories)
+        let task = Task { await model.observeCategories() }
+        defer { task.cancel() }
+        try await waitUntil { !model.categories.isEmpty }
+
+        model.categoryID = expense.id
+        model.kind = .transfer
+        #expect(model.categoryID == nil, "I trasferimenti non hanno categoria")
+        #expect(model.visibleCategories.isEmpty)
+        try await load(model, expecting: 1)
+        #expect(model.items.first?.id == .transfer(moved.id))
+    }
+
+    @Test func accountFilterShowsTransfersWithRelativeSign() async throws {
+        let savings = try await addSavings()
+        try await add(.expense, amount: 1, on: "2026-10-09")
+        try await transfer(500, on: "2026-10-10", from: account, to: savings)
+        try await transfer(200, on: "2026-10-11", from: savings, to: account)
+
+        let model = OperationListModel(month: nil, repositories: repositories)
+        model.accountID = savings.id
+        #expect(model.isFiltering)
+        try await load(model, expecting: 2)
+        #expect(model.items.map { $0.signedAmount(for: model.accountID) } == [-200, 500])
+    }
+
+    @Test func showAccountReplacesOtherFiltersAndSearch() async throws {
+        let savings = try await addSavings()
+        let model = OperationListModel(month: nil, repositories: repositories)
+        model.searchText = "caffè"
+        model.kind = .expense
+        model.categoryID = expense.id
+
+        model.show(account: savings.id)
+        #expect(model.accountID == savings.id)
+        #expect(model.searchText.isEmpty)
+        #expect(model.kind == nil)
+        #expect(model.categoryID == nil)
+        #expect(model.query == MovementQuery(searchText: "", accountID: savings.id, limit: MovementQuery.defaultPageSize))
+    }
+
+    @Test func filteredAccountIsShownAndAccountFilterAvailable() async throws {
+        let model = OperationListModel(month: nil, repositories: repositories)
+        let task = Task { await model.observeAccounts() }
+        defer { task.cancel() }
+        try await waitUntil { model.accounts.count == 1 }
+        #expect(!model.showsAccountFilter, "Con un solo conto il filtro non serve")
+
+        let savings = try await addSavings()
+        try await waitUntil { model.accounts.count == 2 }
+        #expect(model.showsAccountFilter)
+
+        model.accountID = savings.id
+        #expect(model.filteredAccount?.name == "Risparmi")
+    }
+
+    @Test func monthListIncludesTransfersButTotalsDoNot() async throws {
+        let savings = try await addSavings()
+        try await add(.expense, amount: 30, on: "2026-10-05")
+        try await transfer(500, on: "2026-10-06", from: account, to: savings)
+
+        let model = OperationListModel(month: YearMonth(year: 2026, month: 10), repositories: repositories)
+        try await load(model, expecting: 2)
+
+        let task = Task { await model.observeTotals() }
+        defer { task.cancel() }
+        try await waitUntil { model.totals == PeriodTotals(income: 0, expense: 30) }
+    }
+
+    @Test func deletesTransfer() async throws {
+        let savings = try await addSavings()
+        let moved = try await transfer(500, on: "2026-10-06", from: account, to: savings)
+        let model = OperationListModel(month: nil, repositories: repositories)
+        let task = Task { await model.observeItems() }
+        defer { task.cancel() }
+        try await waitUntil { model.items.count == 1 }
+
+        await model.delete(.transfer(moved.id))
+        #expect(!model.deleteFailed)
+        try await waitUntil { model.items.isEmpty }
     }
 
     // MARK: Mesi

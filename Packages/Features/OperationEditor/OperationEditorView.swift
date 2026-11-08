@@ -78,20 +78,7 @@ public struct OperationEditorView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
 
-                HStack {
-                    if let currency = model.currency {
-                        Text(currency)
-                            .foregroundStyle(.secondary)
-                    }
-                    TextField("Importo", text: $model.amountText, prompt: Text(AmountInput.text(minorUnits: 0)))
-                        .font(.largeTitle)
-                        .monospacedDigit()
-                        .multilineTextAlignment(.trailing)
-                        .labelsHidden()
-                        #if os(iOS)
-                        .keyboardType(.decimalPad)
-                        #endif
-                }
+                AmountField(text: $model.amountText, currency: model.currency)
             }
 
             Section("Categoria") {
@@ -99,7 +86,7 @@ public struct OperationEditorView: View {
             }
 
             Section {
-                DatePicker("Data", selection: $model.date, displayedComponents: .date)
+                DateField("Data", selection: $model.date)
                 if model.showsAccountPicker {
                     Picker("Conto", selection: $model.accountID) {
                         ForEach(model.visibleAccounts) { account in

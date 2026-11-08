@@ -19,6 +19,7 @@ let package = Package(
                 "LockFeature",
                 "HomeFeature",
                 "HistoryFeature",
+                "AccountsFeature",
                 "OperationEditorFeature",
                 "SettingsFeature",
             ]
@@ -50,8 +51,13 @@ let package = Package(
         .target(name: "LockFeature", dependencies: ["Core", "DesignSystem", "AppSecurity"], path: "Features/Lock"),
         .target(name: "HomeFeature", dependencies: ["Core", "DesignSystem", "OperationEditorFeature"], path: "Features/Home"),
         .target(name: "HistoryFeature", dependencies: ["Core", "DesignSystem", "OperationEditorFeature"], path: "Features/History"),
+        .target(name: "AccountsFeature", dependencies: ["Core", "DesignSystem", "OperationEditorFeature"], path: "Features/Accounts"),
         .target(name: "OperationEditorFeature", dependencies: ["Core", "DesignSystem"], path: "Features/OperationEditor"),
-        .target(name: "SettingsFeature", dependencies: ["Core", "DesignSystem", "AppSecurity"], path: "Features/Settings"),
+        .target(
+            name: "SettingsFeature",
+            dependencies: ["Core", "DesignSystem", "AppSecurity", "OperationEditorFeature"],
+            path: "Features/Settings"
+        ),
 
         .testTarget(name: "CoreTests", dependencies: ["Core"], path: "Tests/CoreTests"),
         .testTarget(name: "PersistenceTests", dependencies: ["Core", "Persistence"], path: "Tests/PersistenceTests"),
@@ -70,6 +76,11 @@ let package = Package(
             name: "HistoryFeatureTests",
             dependencies: ["Core", "HistoryFeature", "Persistence"],
             path: "Tests/HistoryFeatureTests"
+        ),
+        .testTarget(
+            name: "AccountsFeatureTests",
+            dependencies: ["Core", "AccountsFeature", "Persistence"],
+            path: "Tests/AccountsFeatureTests"
         ),
     ]
 )

@@ -141,9 +141,9 @@ public final class DatabaseStore: DataTransferring {
 
     public func exportCSV() async throws -> URL {
         let database = try currentDatabase()
-        let items = try await database.operations.allItems()
+        let movements = try await database.movements.allMovements()
         let destination = try newTemporaryFolder().appending(path: exportFileName(extension: "csv", device: ""))
-        try CSVDocument.data(for: items).write(to: destination, options: .atomic)
+        try CSVDocument.data(forMovements: movements).write(to: destination, options: .atomic)
         return destination
     }
 
@@ -241,7 +241,7 @@ public final class DatabaseStore: DataTransferring {
         let reopened = try opener(url)
         state = .ready(reopened)
         generation += 1
-        return try await reopened.summary().operationCount
+        return try await reopened.summary().movementCount
     }
 
     /// La copia si fa nella stessa cartella del database: solo così la sostituzione è atomica.

@@ -58,6 +58,28 @@ struct CSVDocumentTests {
         #expect(rows[2] == "2026-10-30;Entrata;0,05;EUR;Stipendio;Conto principale;")
     }
 
+    @Test func writesTransferAsSingleRow() throws {
+        let date = Date(timeIntervalSince1970: 0)
+        let transfer = AccountTransfer(
+            id: TransferID(),
+            amount: 20000,
+            currency: "EUR",
+            date: try #require(Day(string: "2026-11-07")),
+            fromAccountID: AccountID(),
+            toAccountID: AccountID(),
+            note: "risparmi",
+            createdAt: date,
+            updatedAt: date
+        )
+        let rows = try lines(CSVDocument.data(forMovements: [
+            .transfer(TransferListItem(transfer: transfer, fromAccountName: "Conto principale", toAccountName: "Risparmi")),
+            .operation(makeItem(kind: .expense, amount: 500)),
+        ]))
+        #expect(rows.count == 3)
+        #expect(rows[1] == "2026-11-07;Trasferimento;200,00;EUR;;Conto principale → Risparmi;risparmi")
+        #expect(rows[2] == "2026-10-30;Uscita;5,00;EUR;Spesa;Conto principale;")
+    }
+
     @Test func quotesFieldsWithSeparators() {
         #expect(CSVDocument.escaped("a;b") == "\"a;b\"")
         #expect(CSVDocument.escaped("dice \"ciao\"") == "\"dice \"\"ciao\"\"\"")
@@ -80,8 +102,8 @@ struct ImportPreviewTests {
             databaseID: id,
             lastModifiedAt: modified.map { Date(timeIntervalSince1970: $0) },
             lastModifiedBy: nil,
-            operationCount: 0,
-            latestOperationDate: nil
+            movementCount: 0,
+            latestMovementDate: nil
         )
     }
 

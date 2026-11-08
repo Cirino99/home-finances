@@ -103,7 +103,8 @@ public struct Day: Hashable, Comparable, Sendable, Codable {
         )
     }
 
-    fileprivate init(uncheckedYear year: Int, month: Int, day: Int) {
+    /// Senza controlli: solo per valori già validi per costruzione, dentro `Core`.
+    init(uncheckedYear year: Int, month: Int, day: Int) {
         self.year = year
         self.month = month
         self.day = day

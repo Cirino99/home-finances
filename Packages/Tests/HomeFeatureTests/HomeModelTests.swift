@@ -38,6 +38,7 @@ struct HomeModelTests {
     func makeModel() -> HomeModel {
         HomeModel(
             operations: database.operations,
+            movements: database.movements,
             accounts: database.accounts,
             now: { [clock] in clock.date },
             calendar: calendar
@@ -145,12 +146,37 @@ struct HomeModelTests {
         let task = Task { await model.observeRecent() }
         defer { task.cancel() }
         try await waitUntil { model.hasLoadedRecent }
-        #expect(model.recent.map(\.operation.amount) == [4, 3, 2])
+        #expect(model.recent.map { $0.signedAmount(for: nil) } == [-4, -3, -2])
 
         // Cambiare mese non cambia le ultime operazioni.
         model.goToPreviousMonth()
         model.goToPreviousMonth()
-        #expect(model.recent.map(\.operation.amount) == [4, 3, 2])
+        #expect(model.recent.map { $0.signedAmount(for: nil) } == [-4, -3, -2])
+    }
+
+    /// Le ultime operazioni mostrano anche i trasferimenti, che però non toccano il riepilogo del mese (§ 8.2).
+    @Test func recentIncludeTransfersButTotalsDoNot() async throws {
+        let savings = try await database.accounts.create(name: "Risparmi", currency: "EUR", initialBalance: 0)
+        try await add(.expense, amount: 300, on: "2026-10-01")
+        let transfer = try await database.transfers.create(TransferDraft(
+            amount: 5000,
+            date: try #require(Day(string: "2026-10-02")),
+            fromAccountID: account.id,
+            toAccountID: savings.id
+        ))
+
+        let model = makeModel()
+        let recentTask = Task { await model.observeRecent() }
+        let totalsTask = Task { await model.observeTotals() }
+        defer {
+            recentTask.cancel()
+            totalsTask.cancel()
+        }
+        try await waitUntil { model.recent.count == 2 }
+        #expect(model.recent.first?.id == .transfer(transfer.id))
+        #expect(model.recent.first?.signedAmount(for: nil) == nil, "Senza conto di riferimento non ha segno")
+
+        try await waitUntil { model.totals == PeriodTotals(income: 0, expense: 300) }
     }
 
     @Test func emptyDatabaseLoadsNoRecent() async throws {

@@ -95,6 +95,8 @@ struct MacSettingsRoot: View {
                 appLock: appLock,
                 categories: database.categories,
                 accounts: database.accounts,
+                transfers: database.transfers,
+                movements: database.movements,
                 hasBackup: store.hasBackup,
                 isIncludedInSystemBackup: store.systemBackupBinding
             )

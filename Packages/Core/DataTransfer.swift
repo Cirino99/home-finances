@@ -36,21 +36,21 @@ public struct DatabaseSummary: Equatable, Sendable {
     public let databaseID: String
     public let lastModifiedAt: Date?
     public let lastModifiedBy: String?
-    public let operationCount: Int
-    public let latestOperationDate: Day?
+    public let movementCount: Int
+    public let latestMovementDate: Day?
 
     public init(
         databaseID: String,
         lastModifiedAt: Date?,
         lastModifiedBy: String?,
-        operationCount: Int,
-        latestOperationDate: Day?
+        movementCount: Int,
+        latestMovementDate: Day?
     ) {
         self.databaseID = databaseID
         self.lastModifiedAt = lastModifiedAt
         self.lastModifiedBy = lastModifiedBy
-        self.operationCount = operationCount
-        self.latestOperationDate = latestOperationDate
+        self.movementCount = movementCount
+        self.latestMovementDate = latestMovementDate
     }
 }
 
@@ -96,9 +96,9 @@ public protocol DataTransferring: AnyObject {
     /// lancia `DataTransferError.passwordRequired`; se è sbagliata, `.wrongPassword`.
     func prepareImport(from source: URL, password: String?) async throws -> ImportPreview
     func cancelImport(_ preview: ImportPreview)
-    /// Sostituisce il database. Restituisce il numero di operazioni importate.
+    /// Sostituisce il database. Restituisce il numero di movimenti importati, operazioni e trasferimenti.
     func performImport(_ preview: ImportPreview) async throws -> Int
-    /// Ripristina l'ultima copia di sicurezza. Restituisce il numero di operazioni.
+    /// Ripristina l'ultima copia di sicurezza. Restituisce il numero di movimenti.
     func undoLastImport() async throws -> Int
 }
 
@@ -108,17 +108,37 @@ public enum CSVDocument {
 
     /// UTF-8 con BOM, senza il quale Excel sbaglia le lettere accentate.
     public static func data(for items: [OperationListItem]) -> Data {
-        let rows = items.map { item in
-            let operation = item.operation
-            return [
-                operation.date.string,
-                operation.kind == .income ? "Entrata" : "Uscita",
-                amountText(operation.amount),
-                operation.currency,
-                escaped(item.category.name),
-                escaped(item.accountName),
-                escaped(operation.note ?? ""),
-            ].joined(separator: ";")
+        data(forMovements: items.map(MovementListItem.operation))
+    }
+
+    /// Un trasferimento è una riga sola: tipo "Trasferimento", nessuna categoria,
+    /// conto "Conto A → Conto B" (§ 10.5).
+    public static func data(forMovements movements: [MovementListItem]) -> Data {
+        let rows = movements.map { movement in
+            switch movement {
+            case .operation(let item):
+                let operation = item.operation
+                return [
+                    operation.date.string,
+                    operation.kind == .income ? "Entrata" : "Uscita",
+                    amountText(operation.amount),
+                    operation.currency,
+                    escaped(item.category.name),
+                    escaped(item.accountName),
+                    escaped(operation.note ?? ""),
+                ].joined(separator: ";")
+            case .transfer(let item):
+                let transfer = item.transfer
+                return [
+                    transfer.date.string,
+                    "Trasferimento",
+                    amountText(transfer.amount),
+                    transfer.currency,
+                    "",
+                    escaped(item.title),
+                    escaped(transfer.note ?? ""),
+                ].joined(separator: ";")
+            }
         }
         let text = ([header] + rows).joined(separator: "\r\n") + "\r\n"
         return Data([0xEF, 0xBB, 0xBF]) + Data(text.utf8)
@@ -144,9 +164,6 @@ public enum CSVDocument {
 public extension OperationRepository {
     /// Tutte le operazioni, per l'export.
     func allItems() async throws -> [OperationListItem] {
-        for try await items in observeItems(OperationQuery(limit: .max)) {
-            return items
-        }
-        return []
+        try await observeItems(OperationQuery(limit: .max)).currentValue()
     }
 }

@@ -75,11 +75,14 @@ private struct AppCommands: Commands {
             Button("Nuova operazione") { router.newOperation() }
                 .keyboardShortcut("n")
                 .disabled(isLocked)
+            Button("Nuovo trasferimento") { router.newTransfer() }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+                .disabled(isLocked)
             #if os(macOS)
-            Button("Esporta database…") { router.transferRequest = .exportDatabase }
+            Button("Esporta database…") { router.dataTransferRequest = .exportDatabase }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
                 .disabled(isLocked)
-            Button("Importa database…") { router.transferRequest = .importDatabase }
+            Button("Importa database…") { router.dataTransferRequest = .importDatabase }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
                 .disabled(isLocked)
             #endif
@@ -95,6 +98,9 @@ private struct AppCommands: Commands {
                 .disabled(isLocked)
             Button("Storico") { router.selectedTab = .history }
                 .keyboardShortcut("2")
+                .disabled(isLocked)
+            Button("Conti") { router.selectedTab = .accounts }
+                .keyboardShortcut("3")
                 .disabled(isLocked)
             Divider()
         }

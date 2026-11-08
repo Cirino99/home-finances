@@ -1,5 +1,6 @@
 import AppSecurity
 import Core
+import DesignSystem
 import LockFeature
 import Persistence
 import SettingsFeature
@@ -51,6 +52,8 @@ struct DataTransferPresenter: ViewModifier {
                     appLock: appLock,
                     categories: database.categories,
                     accounts: database.accounts,
+                    transfers: database.transfers,
+                    movements: database.movements,
                     hasBackup: store.hasBackup,
                     isIncludedInSystemBackup: store.systemBackupBinding
                 )
@@ -133,7 +136,7 @@ struct DataTransferPresenter: ViewModifier {
             }
             #endif
             .onAppear(perform: processRequests)
-            .onChange(of: router.transferRequest) { processRequests() }
+            .onChange(of: router.dataTransferRequest) { processRequests() }
             .onChange(of: router.pendingImportURL) { processRequests() }
     }
 
@@ -145,8 +148,8 @@ struct DataTransferPresenter: ViewModifier {
             router.editor = nil
             prepareImport(from: url)
         }
-        guard let request = router.transferRequest else { return }
-        router.transferRequest = nil
+        guard let request = router.dataTransferRequest else { return }
+        router.dataTransferRequest = nil
         switch request {
         case .exportDatabase:
             isShowingExportOptions = true
@@ -160,7 +163,7 @@ struct DataTransferPresenter: ViewModifier {
             run {
                 let count = try await store.undoLastImport()
                 router.resetNavigation()
-                router.transferMessage = String(localized: "Dati ripristinati: \(count) operazioni")
+                router.transferMessage = String(localized: "Dati ripristinati: \(count) movimenti")
             }
         }
     }
@@ -200,7 +203,7 @@ struct DataTransferPresenter: ViewModifier {
         run {
             let count = try await store.performImport(preview)
             router.resetNavigation()
-            router.transferMessage = String(localized: "Dati importati: \(count) operazioni")
+            router.transferMessage = String(localized: "Dati importati: \(count) movimenti")
         }
     }
 

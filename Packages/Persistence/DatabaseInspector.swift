@@ -38,13 +38,18 @@ enum DatabaseInspector {
         guard let databaseID = values[MetadataKey.databaseID] else {
             throw DataTransferError.corruptedData
         }
-        let latest = try String.fetchOne(db, sql: "SELECT MAX(date) FROM operation")
+        // Movimenti = operazioni + trasferimenti (§ 10.4). Un file creato prima della `v2` non ha la tabella.
+        let movements = try db.tableExists("transfer")
+            ? "SELECT date FROM operation UNION ALL SELECT date FROM transfer"
+            : "SELECT date FROM operation"
+        let row = try Row.fetchOne(db, sql: "SELECT COUNT(*) AS count, MAX(date) AS latest FROM (\(movements))")
+        let latest: String? = row?["latest"]
         return DatabaseSummary(
             databaseID: databaseID,
             lastModifiedAt: try values[MetadataKey.lastModifiedAt].map(Timestamp.date),
             lastModifiedBy: values[MetadataKey.lastModifiedBy],
-            operationCount: try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM operation") ?? 0,
-            latestOperationDate: latest.flatMap(Day.init(string:))
+            movementCount: row?["count"] ?? 0,
+            latestMovementDate: latest.flatMap(Day.init(string:))
         )
     }
 
@@ -72,14 +77,18 @@ enum DatabaseInspector {
         }
 
         let applied = Set(try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations"))
-        let known = Set(AppDatabase.migrator.migrations)
-        guard applied.isSubset(of: known) else {
+        let known = AppDatabase.migrator.migrations
+        guard applied.isSubset(of: Set(known)) else {
             throw DataTransferError.newerSchema
         }
+        // Le migrazioni si applicano in ordine: un file dell'app ne ha sempre una sequenza iniziale.
+        guard let last = known.prefix(applied.count).last, applied == Set(known.prefix(applied.count)) else {
+            throw DataTransferError.unexpectedContent
+        }
 
-        // Stessa versione dello schema: dev'essere identico a quello creato dall'app. Con una versione
-        // precedente non c'è un termine di confronto: le migrazioni falliranno se non è coerente.
-        if applied == known, try schema(db) != referenceSchema() {
+        // Lo schema dev'essere identico a quello che l'app crea con le stesse migrazioni: un file `v1`
+        // con una tabella `transfer` già presente farebbe fallire la `v2` dopo l'import.
+        if try schema(db) != referenceSchema(upTo: last) {
             throw DataTransferError.unexpectedContent
         }
     }
@@ -95,6 +104,14 @@ enum DatabaseInspector {
         for row in try Row.fetchAll(db, sql: "SELECT * FROM operation") {
             _ = try FinanceOperation(row: row)
         }
+        guard try db.tableExists("transfer") else { return }
+        for row in try Row.fetchAll(db, sql: "SELECT * FROM transfer") {
+            let transfer = try AccountTransfer(row: row)
+            // Il vincolo c'è nello schema, ma un file manomesso può averlo aggirato.
+            guard transfer.fromAccountID != transfer.toAccountID, transfer.amount > 0 else {
+                throw DataTransferError.corruptedData
+            }
+        }
     }
 
     private static func schema(_ db: Database) throws -> Set<[String]> {
@@ -107,8 +124,11 @@ enum DatabaseInspector {
         })
     }
 
-    private static func referenceSchema() throws -> Set<[String]> {
-        try AppDatabase.inMemory().writer.read { db in
+    /// Schema di un database nuovo, creato dall'app con le migrazioni fino a `migration` compresa.
+    private static func referenceSchema(upTo migration: String) throws -> Set<[String]> {
+        let queue = try DatabaseQueue()
+        try AppDatabase.migrator.migrate(queue, upTo: migration)
+        return try queue.read { db in
             try schema(db)
         }
     }
