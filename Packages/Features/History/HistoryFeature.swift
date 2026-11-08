@@ -1,4 +1,5 @@
 import Core
+import DesignSystem
 import OperationEditorFeature
 import SwiftUI
 
@@ -156,39 +157,6 @@ public struct HistoryView: View {
         }
     }
 }
-
-#if os(macOS)
-/// Linea tra lista e dettaglio, da trascinare per cambiare la larghezza della lista.
-/// La larghezza scelta resta salvata tra un avvio e l'altro.
-private struct ColumnResizeHandle: View {
-    @Binding var width: Double
-    let range: ClosedRange<Double>
-    @State private var widthAtDragStart: Double?
-
-    var body: some View {
-        Divider()
-            .overlay {
-                // Più larga della linea, per afferrarla senza dover essere precisi.
-                Color.clear
-                    .frame(width: 9)
-                    .contentShape(Rectangle())
-                    .pointerStyle(.columnResize)
-                    .gesture(
-                        // Coordinate globali: la linea si sposta con la colonna durante il trascinamento.
-                        DragGesture(minimumDistance: 0, coordinateSpace: .global)
-                            .onChanged { value in
-                                let start = widthAtDragStart ?? width
-                                widthAtDragStart = start
-                                width = min(max(start + value.translation.width, range.lowerBound), range.upperBound)
-                            }
-                            .onEnded { _ in
-                                widthAtDragStart = nil
-                            }
-                    )
-            }
-    }
-}
-#endif
 
 /// Picker a segmenti ed elenco del segmento scelto.
 private struct HistoryRoot: View {

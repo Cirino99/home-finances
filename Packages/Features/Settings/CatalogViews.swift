@@ -116,8 +116,8 @@ struct CategoriesView: View {
     }
 }
 
-/// Gestione dei conti (§ 8.6).
-struct AccountsView: View {
+/// Gestione dei conti (§ 8.6). Pubblica: la apre anche il tab Conti, con "Gestisci conti" (§ 8.7).
+public struct AccountsCatalogView: View {
     private enum Editing: Identifiable {
         case new
         case existing(Account)
@@ -130,13 +130,23 @@ struct AccountsView: View {
         }
     }
 
-    let repository: any AccountRepository
-    let currency: String
+    private let repository: any AccountRepository
+    private let currency: String?
     @State private var accounts: [Account] = []
     @State private var editing: Editing?
     @State private var errorMessage: String?
 
-    var body: some View {
+    /// `currency` è la valuta dei conti nuovi; senza, quella dei conti esistenti (una sola in v1, § 6.1).
+    public init(repository: any AccountRepository, currency: String? = nil) {
+        self.repository = repository
+        self.currency = currency
+    }
+
+    private var newAccountCurrency: String {
+        currency ?? accounts.first?.currency ?? "EUR"
+    }
+
+    public var body: some View {
         List {
             let active = accounts.filter { !$0.isArchived }
             Section {
@@ -188,8 +198,8 @@ struct AccountsView: View {
         .sheet(item: $editing) { editing in
             switch editing {
             case .new:
-                AccountEditor(name: "", initialBalance: 0, currency: currency) { name, balance in
-                    try await repository.create(name: name, currency: currency, initialBalance: balance)
+                AccountEditor(name: "", initialBalance: 0, currency: newAccountCurrency) { name, balance in
+                    try await repository.create(name: name, currency: newAccountCurrency, initialBalance: balance)
                 }
             case .existing(let account):
                 AccountEditor(name: account.name, initialBalance: account.initialBalance, currency: account.currency) { name, balance in

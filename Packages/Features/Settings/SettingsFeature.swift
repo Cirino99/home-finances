@@ -115,7 +115,7 @@ public struct SettingsView: View {
                 CategoriesView(repository: categories)
             }
             NavigationLink("Gestisci conti") {
-                AccountsView(repository: accounts, currency: currency ?? "EUR")
+                AccountsCatalogView(repository: accounts, currency: currency)
             }
             Button("Esporta database") { request(.exportDatabase) }
             Button("Importa database") { request(.importDatabase) }

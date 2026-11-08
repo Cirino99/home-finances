@@ -548,7 +548,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 - saldo del conto, grande;
 - **ultime 5 movimentazioni** del conto, con il segno relativo al conto anche per i trasferimenti → dettaglio;
 - **"Vedi tutte nello Storico"** → Storico › Operazioni filtrato sul conto;
-- toolbar: **Trasferisci**, con il conto già impostato come origine.
+- toolbar: **Trasferisci**, con il conto già impostato come origine. Non c'è nel dettaglio di un conto archiviato, perché l'editor propone solo conti attivi.
 
 ### 8.8 Trasferimento
 

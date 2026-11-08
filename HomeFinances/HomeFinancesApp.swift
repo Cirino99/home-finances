@@ -99,6 +99,9 @@ private struct AppCommands: Commands {
             Button("Storico") { router.selectedTab = .history }
                 .keyboardShortcut("2")
                 .disabled(isLocked)
+            Button("Conti") { router.selectedTab = .accounts }
+                .keyboardShortcut("3")
+                .disabled(isLocked)
             Divider()
         }
         #if os(macOS)

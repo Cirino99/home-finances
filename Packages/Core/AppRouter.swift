@@ -1,9 +1,11 @@
 import Foundation
 import Observation
 
+/// Sezioni dell'app, nell'ordine dei tab: Home · Storico · Conti (§ 7.1).
 public enum AppTab: String, CaseIterable, Sendable {
     case home
     case history
+    case accounts
 }
 
 /// Cosa deve mostrare l'editor (§ 7.3). `nil` nel router significa editor chiuso.
@@ -40,6 +42,13 @@ public enum HistoryRoute: Hashable, Sendable {
     case year(Int)
 }
 
+/// Percorso del tab Conti (§ 8.7): un conto, e da lì un suo movimento.
+public enum AccountsRoute: Hashable, Sendable {
+    case account(AccountID)
+    case operation(OperationID)
+    case transfer(TransferID)
+}
+
 /// Azioni sui dati chieste dalle Impostazioni o dal menu del Mac (§ 10). Le esegue la radice dell'app:
 /// un pannello non si può aprire mentre si sta chiudendo lo sheet delle Impostazioni.
 public enum DataTransferRequest: Equatable, Sendable {
@@ -63,7 +72,11 @@ public final class AppRouter {
     /// Filtro per conto chiesto da fuori dallo Storico, per esempio dal dettaglio di un conto (§ 7.3).
     /// L'elenco lo legge, lo applica come gli altri filtri e lo azzera.
     public var pendingHistoryAccountFilter: AccountID?
+    /// Come `historyPath`: su iPad e Mac il primo elemento è il conto selezionato.
+    public var accountsPath: [AccountsRoute] = []
     public var isSettingsPresented = false
+    /// "Gestisci conti" dal tab Conti (§ 8.7): la stessa schermata delle Impostazioni.
+    public var isAccountManagementPresented = false
     public var dataTransferRequest: DataTransferRequest?
     /// File `.homefinances` aperto dall'esterno: l'import parte solo dopo lo sblocco (§ 10.4).
     public var pendingImportURL: URL?
@@ -108,6 +121,7 @@ public final class AppRouter {
     public func dismissPresentations() {
         editor = nil
         isSettingsPresented = false
+        isAccountManagementPresented = false
         dataTransferRequest = nil
     }
 
@@ -117,6 +131,7 @@ public final class AppRouter {
         selectedTab = .home
         homePath = []
         historyPath = []
+        accountsPath = []
         pendingHistoryAccountFilter = nil
     }
 }

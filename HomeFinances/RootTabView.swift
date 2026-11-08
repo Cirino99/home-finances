@@ -1,3 +1,4 @@
+import AccountsFeature
 import AppSecurity
 import Core
 import HistoryFeature
@@ -5,6 +6,7 @@ import HomeFeature
 import LockFeature
 import OperationEditorFeature
 import Persistence
+import SettingsFeature
 import SwiftUI
 
 /// Navigazione principale (§ 7): i tab e gli editor, presentati una sola volta da qui.
@@ -45,6 +47,14 @@ struct RootTabView: View {
                     accounts: database.accounts
                 )
             }
+            Tab("Conti", systemImage: "building.columns", value: AppTab.accounts) {
+                // Come lo Storico, gestisce da sé stack e colonne.
+                AccountsView(
+                    operations: database.operations,
+                    transfers: database.transfers,
+                    movements: database.movements
+                )
+            }
         }
         .tabViewStyle(.sidebarAdaptable)
         .environment(router)
@@ -54,6 +64,21 @@ struct RootTabView: View {
                 .presentationSizing(.form)
                 // L'overlay della radice non copre gli sheet (§ 9).
                 .privacyCover(appLock.isPrivacyCovered)
+        }
+        // "Gestisci conti" dal tab Conti: la stessa schermata delle Impostazioni (§ 8.7).
+        .sheet(isPresented: $router.isAccountManagementPresented) {
+            NavigationStack {
+                AccountsCatalogView(repository: database.accounts)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Fine") { router.isAccountManagementPresented = false }
+                        }
+                    }
+            }
+            #if os(macOS)
+            .frame(minWidth: 460, minHeight: 480)
+            #endif
+            .privacyCover(appLock.isPrivacyCovered)
         }
         .modifier(DataTransferPresenter(database: database, store: store, appLock: appLock, router: router))
         .onAppear {
