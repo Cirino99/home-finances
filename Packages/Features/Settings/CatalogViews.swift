@@ -192,6 +192,23 @@ public struct AccountsCatalogView: View {
                         Button("Modifica") { editing = .existing(account) }
                         Button("Rimuovi", role: .destructive) { remove(account) }
                     }
+                    // Sulla riga e non sull'elenco: su iOS 26 la conferma è un popover che punta a chi la apre.
+                    .confirmationDialog(
+                        "Il conto ha ancora un saldo",
+                        isPresented: isConfirmingRemoval(of: account),
+                        titleVisibility: .visible,
+                        presenting: pendingRemoval
+                    ) { removal in
+                        if canTransfer(from: removal.account) {
+                            Button("Trasferisci") { transferSource = TransferSource(id: removal.account.id) }
+                        }
+                        Button("Rimuovi comunque", role: .destructive) {
+                            perform { _ = try await repository.remove(removal.account.id) }
+                        }
+                    } message: { removal in
+                        let amount = MoneyFormat.string(minorUnits: removal.balance, currency: removal.account.currency)
+                        Text("Su questo conto restano \(amount). Prima di rimuoverlo puoi trasferirli su un altro conto.")
+                    }
                 }
                 .onMove { source, destination in
                     var ids = active.map(\.id)
@@ -238,29 +255,6 @@ public struct AccountsCatalogView: View {
             }
             .inheritedPrivacyCover()
         }
-        .confirmationDialog(
-            "Il conto ha ancora un saldo",
-            isPresented: Binding(
-                get: { pendingRemoval != nil },
-                set: { isPresented in
-                    if !isPresented {
-                        pendingRemoval = nil
-                    }
-                }
-            ),
-            titleVisibility: .visible,
-            presenting: pendingRemoval
-        ) { removal in
-            if canTransfer(from: removal.account) {
-                Button("Trasferisci") { transferSource = TransferSource(id: removal.account.id) }
-            }
-            Button("Rimuovi comunque", role: .destructive) {
-                perform { _ = try await repository.remove(removal.account.id) }
-            }
-        } message: { removal in
-            let amount = MoneyFormat.string(minorUnits: removal.balance, currency: removal.account.currency)
-            Text("Su questo conto restano \(amount). Prima di rimuoverlo puoi trasferirli su un altro conto.")
-        }
         // Sopra questa schermata, che sia nelle Impostazioni o nel tab Conti: su Mac le Impostazioni
         // sono una finestra a parte, e l'editor della finestra principale non si vedrebbe.
         .sheet(item: $transferSource) { source in
@@ -289,6 +283,17 @@ public struct AccountsCatalogView: View {
                 errorMessage = "Non è stato possibile caricare i saldi dei conti."
             }
         }
+    }
+
+    private func isConfirmingRemoval(of account: Account) -> Binding<Bool> {
+        Binding(
+            get: { pendingRemoval?.id == account.id },
+            set: { isPresented in
+                if !isPresented, pendingRemoval?.id == account.id {
+                    pendingRemoval = nil
+                }
+            }
+        )
     }
 
     /// Serve un altro conto attivo su cui spostare il saldo.

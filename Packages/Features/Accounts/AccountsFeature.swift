@@ -138,6 +138,10 @@ struct AccountsListView: View {
             }
         }
         .navigationTitle("Conti")
+        #if os(iOS)
+        // Come lo Storico: titolo grande ma fisso nella barra, uguale in tutte le sezioni (§ 9).
+        .toolbarTitleDisplayMode(.inlineLarge)
+        #endif
         .toolbar {
             // Accanto a "Trasferisci": con `.secondaryAction` su Mac finirebbe al centro della toolbar.
             // Prima nel codice, quindi a sinistra, anche quando "Trasferisci" è quello del dettaglio.

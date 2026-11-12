@@ -76,13 +76,22 @@ private struct HistoryRoot: View {
     let repositories: HistoryRepositories
     let selection: Binding<HistoryRoute?>?
     @Environment(AppRouter.self) private var router
+    #if os(iOS)
+    // La ricerca sta nella stessa barra del selettore: qui il testo e il focus, l'elenco li usa.
+    @State private var searchText = ""
+    @FocusState private var isSearchFocused: Bool
+    #endif
 
     var body: some View {
         @Bindable var router = router
         Group {
             switch router.historySegment {
             case .operations:
+                #if os(iOS)
+                OperationListView(month: nil, repositories: repositories, selection: selection, searchText: $searchText)
+                #else
                 OperationListView(month: nil, repositories: repositories, selection: selection)
+                #endif
             case .months:
                 MonthsListView(year: nil, repositories: repositories, selection: selection)
             case .years:
@@ -91,11 +100,20 @@ private struct HistoryRoot: View {
         }
         #if os(iOS)
         // Barra di sistema: il contenuto che scorre sotto viene sfocato, invece di leggersi attraverso i controlli.
+        // Una sola barra per selettore e ricerca: con due barre impilate, ognuna con il proprio bordo sfocato,
+        // il passaggio tra titolo grande e piccolo scattava scorrendo lentamente verso la cima.
         .safeAreaBar(edge: .top) {
-            segmentPicker($router.historySegment)
-                .padding(.horizontal)
-                .padding(.bottom, 8)
+            VStack(spacing: 0) {
+                segmentPicker($router.historySegment)
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+                if router.historySegment == .operations {
+                    HistorySearchField(text: $searchText, isFocused: $isSearchFocused)
+                }
+            }
         }
+        .onAppear(perform: focusSearchIfPending)
+        .onChange(of: router.isSearchPending) { focusSearchIfPending() }
         #else
         .safeAreaInset(edge: .top) {
             segmentPicker($router.historySegment)
@@ -104,6 +122,11 @@ private struct HistoryRoot: View {
         }
         #endif
         .navigationTitle("Storico")
+        #if os(iOS)
+        // Titolo grande ma fisso nella barra: con il titolo che si comprime, il rimbalzo in cima faceva
+        // alternare titolo grande e piccolo, perché ogni cambio spostava il selettore e la ricerca sotto.
+        .toolbarTitleDisplayMode(.inlineLarge)
+        #endif
         .toolbar {
             // Azione, non sezione: sta nella toolbar e non nella tab bar (§ 7.2, Opzione A).
             ToolbarItem(placement: .primaryAction) {
@@ -115,6 +138,15 @@ private struct HistoryRoot: View {
             router.historyPath = []
         }
     }
+
+    #if os(iOS)
+    /// ⌘F con una tastiera esterna (§ 7.4): il router porta già sul segmento Operazioni.
+    private func focusSearchIfPending() {
+        guard router.isSearchPending, router.historySegment == .operations else { return }
+        router.isSearchPending = false
+        isSearchFocused = true
+    }
+    #endif
 
     private func segmentPicker(_ selection: Binding<HistorySegment>) -> some View {
         Picker("Vista", selection: selection) {

@@ -77,15 +77,6 @@ public struct SettingsView: View {
         .alert("\(appLock.biometry.displayName) non attivato", isPresented: $biometricFailed) {
             Button("OK", role: .cancel) {}
         }
-        .confirmationDialog(
-            "Annullare l'ultimo import?",
-            isPresented: $isConfirmingUndo,
-            titleVisibility: .visible
-        ) {
-            Button("Ripristina i dati precedenti", role: .destructive) { request(.undoImport) }
-        } message: {
-            Text("Torneranno i dati di prima dell'ultimo import. Le modifiche fatte dopo andranno perse.")
-        }
         .task {
             do {
                 for try await value in accounts.observeAccounts(includingArchived: true) {
@@ -127,6 +118,16 @@ public struct SettingsView: View {
             Button("Importa database") { request(.importDatabase) }
             Button("Annulla ultimo import") { isConfirmingUndo = true }
                 .disabled(!hasBackup)
+                // Sul pulsante: su iOS 26 la conferma è un popover che punta a chi la apre.
+                .confirmationDialog(
+                    "Annullare l'ultimo import?",
+                    isPresented: $isConfirmingUndo,
+                    titleVisibility: .visible
+                ) {
+                    Button("Ripristina i dati precedenti", role: .destructive) { request(.undoImport) }
+                } message: {
+                    Text("Torneranno i dati di prima dell'ultimo import. Le modifiche fatte dopo andranno perse.")
+                }
             Button("Esporta CSV") { request(.exportCSV) }
         }
     }

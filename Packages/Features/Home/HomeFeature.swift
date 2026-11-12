@@ -40,6 +40,10 @@ public struct HomeView: View {
         .listSectionSpacing(.compact)
         #endif
         .navigationTitle("Home")
+        #if os(iOS)
+        // Come lo Storico: titolo grande ma fisso nella barra, uguale in tutte le sezioni (§ 9).
+        .toolbarTitleDisplayMode(.inlineLarge)
+        #endif
         .navigationDestination(for: HomeRoute.self) { route in
             switch route {
             case .operation(let id):

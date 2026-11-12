@@ -53,28 +53,29 @@ struct LockScreen: View {
                     Button("Hai dimenticato il PIN?") { isConfirmingReset = true }
                         .buttonStyle(.borderless)
                         .font(.callout)
+                        // Sul pulsante: su iOS 26 la conferma è un popover che punta a chi la apre.
+                        .confirmationDialog(
+                            "Reimpostare il PIN?",
+                            isPresented: $isConfirmingReset,
+                            titleVisibility: .visible
+                        ) {
+                            Button("Continua") {
+                                Task {
+                                    do {
+                                        try await appLock.resetForgottenPIN()
+                                    } catch {
+                                        resetFailed = true
+                                    }
+                                }
+                            }
+                        } message: {
+                            Text("Questa app non contiene dati. Dopo aver confermato la tua identità potrai scegliere un nuovo PIN.")
+                        }
                 }
             }
             .padding()
             .scrollsIfNeeded()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .confirmationDialog(
-            "Reimpostare il PIN?",
-            isPresented: $isConfirmingReset,
-            titleVisibility: .visible
-        ) {
-            Button("Continua") {
-                Task {
-                    do {
-                        try await appLock.resetForgottenPIN()
-                    } catch {
-                        resetFailed = true
-                    }
-                }
-            }
-        } message: {
-            Text("Questa app non contiene dati. Dopo aver confermato la tua identità potrai scegliere un nuovo PIN.")
         }
         .alert("PIN non reimpostato", isPresented: $resetFailed) {
             Button("OK", role: .cancel) {}

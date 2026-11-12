@@ -21,7 +21,7 @@ struct HistoryRouteRow<Content: View>: View {
 
 #if os(iOS)
 /// Campo di ricerca sotto il picker dei segmenti.
-private struct HistorySearchField: View {
+struct HistorySearchField: View {
     @Binding var text: String
     let isFocused: FocusState<Bool>.Binding
 
@@ -50,6 +50,24 @@ private struct HistorySearchField: View {
         .padding(.bottom, 8)
     }
 }
+
+/// Barra di ricerca propria, per "Operazioni del mese": nell'elenco completo la ricerca sta nella stessa
+/// barra del selettore dei segmenti, in `HistoryRoot`.
+private struct OwnSearchBar: ViewModifier {
+    let isEnabled: Bool
+    @Binding var text: String
+    let isFocused: FocusState<Bool>.Binding
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.safeAreaBar(edge: .top, spacing: 0) {
+                HistorySearchField(text: $text, isFocused: isFocused)
+            }
+        } else {
+            content
+        }
+    }
+}
 #endif
 
 /// Segmento Operazioni e vista "Operazioni del mese" (§ 8.3): operazioni e trasferimenti.
@@ -57,11 +75,19 @@ struct OperationListView: View {
     let selection: Binding<HistoryRoute?>?
     @State private var model: OperationListModel
     @State private var pendingDeletion: MovementID?
+    /// Testo cercato nella barra di `HistoryRoot` su iPhone e iPad; `nil` se la ricerca è di questa vista.
+    let searchText: Binding<String>?
     @FocusState private var isSearchFocused: Bool
     @Environment(AppRouter.self) private var router
 
-    init(month: YearMonth?, repositories: HistoryRepositories, selection: Binding<HistoryRoute?>? = nil) {
+    init(
+        month: YearMonth?,
+        repositories: HistoryRepositories,
+        selection: Binding<HistoryRoute?>? = nil,
+        searchText: Binding<String>? = nil
+    ) {
         self.selection = selection
+        self.searchText = searchText
         _model = State(initialValue: OperationListModel(month: month, repositories: repositories))
     }
 
@@ -97,8 +123,11 @@ struct OperationListView: View {
         .searchFocused($isSearchFocused)
         #else
         // Non `.searchable`: starebbe sopra il picker dei segmenti e lo sposterebbe a ogni cambio di segmento.
-        .safeAreaBar(edge: .top, spacing: 0) {
-            HistorySearchField(text: $model.searchText, isFocused: $isSearchFocused)
+        .modifier(OwnSearchBar(isEnabled: searchText == nil, text: $model.searchText, isFocused: $isSearchFocused))
+        .onChange(of: searchText?.wrappedValue, initial: true) { _, text in
+            if let text {
+                model.searchText = text
+            }
         }
         .scrollDismissesKeyboard(.interactively)
         #endif
@@ -112,14 +141,6 @@ struct OperationListView: View {
             ToolbarItem(placement: .automatic) {
                 filterMenu
             }
-        }
-        .confirmationDialog(
-            deletionTitle,
-            isPresented: isConfirmingDeletion,
-            titleVisibility: .visible,
-            presenting: pendingDeletion
-        ) { id in
-            Button("Elimina", role: .destructive) { delete(id) }
         }
         .alert(
             "Eliminazione non riuscita",
@@ -146,9 +167,10 @@ struct OperationListView: View {
         Day(containing: Date())
     }
 
-    /// Solo dall'elenco completo, non da "Operazioni del mese".
+    /// Solo dall'elenco completo, non da "Operazioni del mese". Se la ricerca sta nella barra di
+    /// `HistoryRoot`, il focus lo dà lei.
     private func focusSearchIfPending() {
-        guard router.isSearchPending, model.month == nil else { return }
+        guard router.isSearchPending, model.month == nil, searchText == nil else { return }
         router.isSearchPending = false
         isSearchFocused = true
     }
@@ -157,22 +179,25 @@ struct OperationListView: View {
     private func applyPendingAccountFilter() {
         guard model.month == nil, let account = router.pendingHistoryAccountFilter else { return }
         router.pendingHistoryAccountFilter = nil
+        // Anche il campo della barra comune: altrimenti mostrerebbe un testo che non filtra più nulla.
+        searchText?.wrappedValue = ""
         model.show(account: account)
     }
 
-    private var isConfirmingDeletion: Binding<Bool> {
+    /// La conferma di una riga: su iOS 26 il dialogo è un popover che punta alla vista a cui è attaccato.
+    private func isConfirmingDeletion(of id: MovementID) -> Binding<Bool> {
         Binding(
-            get: { pendingDeletion != nil },
+            get: { pendingDeletion == id },
             set: { isPresented in
-                if !isPresented {
+                if !isPresented, pendingDeletion == id {
                     pendingDeletion = nil
                 }
             }
         )
     }
 
-    private var deletionTitle: LocalizedStringKey {
-        if case .transfer = pendingDeletion {
+    private func deletionTitle(for id: MovementID) -> LocalizedStringKey {
+        if case .transfer = id {
             "Eliminare questo trasferimento?"
         } else {
             "Eliminare questa operazione?"
@@ -195,6 +220,14 @@ struct OperationListView: View {
         .contextMenu {
             Button("Modifica", systemImage: "pencil") { edit(item.id) }
             Button("Elimina", systemImage: "trash", role: .destructive) { pendingDeletion = item.id }
+        }
+        // Sulla riga e non sull'elenco: il popover della conferma deve indicare il movimento da eliminare.
+        .confirmationDialog(
+            deletionTitle(for: item.id),
+            isPresented: isConfirmingDeletion(of: item.id),
+            titleVisibility: .visible
+        ) {
+            Button("Elimina", role: .destructive) { delete(item.id) }
         }
     }
 

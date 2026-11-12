@@ -438,7 +438,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 
 ### 8.2 Home
 
-**Titolo:** "Home" (large title su iOS).
+**Titolo:** "Home", grande ma fisso nella barra su iOS (§ 9).
 
 **Contenuto, dall'alto verso il basso:**
 
@@ -459,7 +459,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 
 ### 8.3 Storico
 
-**Toolbar:** titolo "Storico" + `Picker` a segmenti **Operazioni | Mesi | Anni** (default: Operazioni).
+**Toolbar:** titolo "Storico" + `Picker` a segmenti **Operazioni | Mesi | Anni** (default: Operazioni). Su iOS il titolo è grande ma fisso nella barra (`.inlineLarge`): con il selettore e la ricerca fissati sotto, un titolo che si comprime si alternava con quello piccolo nel rimbalzo in cima.
 
 **Segmento Operazioni:**
 - elenco di tutte le operazioni e dei trasferimenti, raggruppati per giorno con intestazioni ("Oggi", "Ieri", "Lunedì 26 ottobre");
@@ -536,7 +536,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 
 ### 8.7 Conti
 
-**Titolo:** "Conti" (large title su iOS).
+**Titolo:** "Conti", grande ma fisso nella barra su iOS (§ 9).
 
 - **Card del saldo totale**, con il segno esplicito.
 - **Elenco dei conti attivi**, nell'ordine scelto in Gestisci conti: nome e saldo. Tap → dettaglio del conto.
@@ -576,7 +576,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 ## 9. Linee guida UI trasversali
 
 - **HIG:**
-  - large title su iOS;
+  - nelle sezioni principali (Home, Storico, Conti) titolo grande ma fisso nella barra (`.inlineLarge`), uguale ovunque: un titolo che si comprime, con selettore e ricerca fissati sotto, scattava nel rimbalzo in cima (§ 8.3);
   - SF Symbols per tutte le icone;
   - colori semantici di sistema più tre token del DesignSystem: `income` (verde), `expense` (rosso) e `transfer` (blu/indaco), con varianti chiare e scure.
 - **Accessibilità:**
