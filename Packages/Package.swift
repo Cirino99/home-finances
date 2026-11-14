@@ -26,10 +26,10 @@ let package = Package(
         ),
     ],
     dependencies: [
-        // GRDB collegato a SQLCipher invece che al SQLite di sistema (§ 5.7): fork di GRDB 7.12.0 con le
-        // modifiche "GRDB+SQLCipher" indicate nel suo Package.swift. SQLCipher arriva dal pacchetto
-        // ufficiale di Zetetic, dipendenza del fork. Istruzioni in docs/PIANO-CIFRATURA.md, § 3.1.
-        .package(url: "https://github.com/Cirino99/GRDB.swift.git", exact: "7.12.0-sqlcipher.1"),
+        // GRDB collegato a SQLCipher invece che al SQLite di sistema (§ 5.7): fork ufficiale mantenuto
+        // dal team di SQLCipher con l'approvazione dell'autore di GRDB. SQLCipher arriva dal pacchetto
+        // ufficiale di Zetetic, dipendenza del fork. Versione esatta: gli aggiornamenti si decidono (piano, § 3.1).
+        .package(url: "https://github.com/sqlcipher/GRDB.swift.git", exact: "7.12.0"),
     ],
     targets: [
         // Modelli di dominio e regole: nessuna dipendenza.

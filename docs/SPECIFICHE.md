@@ -58,7 +58,7 @@ Principi guida:
 |---|---|---|
 | UI | **SwiftUI** + Observation (`@Observable`) | Codice unico per le tre piattaforme |
 | Database | **SQLite** (versione di sistema) | Locale, nessun server, aggregati calcolati in SQL |
-| Accesso dati | **GRDB.swift** 7.12 tramite Swift Package Manager, in un fork collegato a **SQLCipher** (§ 5.7) | Migrazioni, record tipizzati, `ValueObservation` per una UI reattiva |
+| Accesso dati | **GRDB.swift** 7.12 tramite Swift Package Manager, dal fork ufficiale collegato a **SQLCipher** (`sqlcipher/GRDB.swift`, § 5.7) | Migrazioni, record tipizzati, `ValueObservation` per una UI reattiva |
 | Hash del PIN | **CommonCrypto** (PBKDF2-HMAC-SHA256) | Il PIN non viene mai salvato in chiaro |
 | Segreti | **Keychain Services** | Conservazione dell'hash del PIN e del contatore dei tentativi |
 | Autenticazione | **LocalAuthentication** | Face ID / Touch ID |

@@ -58,44 +58,25 @@ Criteri per la scelta, in ordine:
 
 #### Scelta (step 1, 14 novembre 2026)
 
-**Opzione A, con un fork di GRDB su GitHub:** `https://github.com/Cirino99/GRDB.swift`.
+**Opzione A, con il fork ufficiale [`sqlcipher/GRDB.swift`](https://github.com/sqlcipher/GRDB.swift)**, versione esatta `7.12.0`.
 
-- **SQLCipher:** pacchetto ufficiale di Zetetic, [`SQLCipher.swift`](https://github.com/sqlcipher/SQLCipher.swift), per SPM dalla versione 4.10. Si resta sulla serie 4: la 5.0, in beta, non apre i database della 4.
-- **GRDB:** la 7.12.0 (1° novembre 2026, nessun cambio incompatibile rispetto alla 7.11.1) non pubblica una variante SQLCipher per SPM. Il suo `Package.swift` spiega, nei commenti "GRDB+SQLCipher", le modifiche per collegarlo a SQLCipher, e un pacchetto usato come dipendenza non si può modificare da fuori: da qui il fork.
-- **Scartata l'opzione B:** i fork pronti trovati sono indietro (per esempio GRDB 7.5 con SQLCipher 4.9) o senza aggiornamenti verificabili.
+- **Il fork:** è un "managed fork" creato a febbraio 2026 dal team di SQLCipher, che si è impegnato a seguire ogni versione di GRDB. L'autore di GRDB lo ha approvato ([discussione #1854](https://github.com/groue/GRDB.swift/discussions/1854)), e la documentazione di GRDB lo indica come il modo consigliato per usare SQLCipher con SPM. Il suo `Package.swift` applica le modifiche "GRDB+SQLCipher" del `Package.swift` di GRDB.
+- **SQLCipher:** pacchetto ufficiale di Zetetic, [`SQLCipher.swift`](https://github.com/sqlcipher/SQLCipher.swift), dipendenza del fork. Si resta sulla serie 4: la 5.0, in beta, non apre i database della 4.
+- **Perché non un fork nostro:** lo step 1 era partito con `Cirino99/GRDB.swift`, perché il fork ufficiale non era emerso dalla ricerca. Il fork ufficiale non aggiunge nessuno di nuovo di cui fidarsi (GRDB e Zetetic sono già dipendenze), non richiede lavoro a ogni aggiornamento e non dipende da un repository personale. Un fork nostro servirebbe solo per modifiche nostre, o per controllare ogni aggiornamento prima di adottarlo.
+- **Scartati i fork di terzi** (per esempio GRDB 7.5 con SQLCipher 4.9): indietro o senza aggiornamenti verificabili.
 - **Il resto del codice** non usa il SQLite di sistema direttamente (nessun `import SQLite3` né `sqlite3_`): tutto passa da GRDB.
 - **Licenza:** SQLCipher Community è BSD, e la sua licenza va riportata nell'app e nella documentazione (step 7).
 
-**Preparare il fork** (una volta, e a ogni aggiornamento di GRDB):
+**Regole per gli aggiornamenti:**
 
-1. Su GitHub, fork di `groue/GRDB.swift` nell'account `Cirino99`.
-2. In locale:
-   ```bash
-   git clone https://github.com/Cirino99/GRDB.swift.git
-   cd GRDB.swift
-   git remote add upstream https://github.com/groue/GRDB.swift.git
-   git fetch upstream --tags
-   git switch -c sqlcipher v7.12.0
-   ```
-3. Nel `Package.swift` del fork, seguendo i commenti "GRDB+SQLCipher":
-   - togliere il commento alle 4 righe sotto `GRDB+SQLCipher: Uncomment those lines`: dipendenza `SQLCipher.swift` e le definizioni `SQLITE_HAS_CODEC` e `SQLCipher`;
-   - cancellare il prodotto `.library(name: "GRDBSQLite", …)`;
-   - cancellare il target `.systemLibrary(name: "GRDBSQLite", …)`;
-   - togliere il commento al target `GRDBSQLCipher`;
-   - nelle dipendenze del target `GRDB`, cancellare `.target(name: "GRDBSQLite")` e togliere il commento a `SQLCipher` e `GRDBSQLCipher`.
-4. Salvare e pubblicare:
-   ```bash
-   git commit -am "GRDB 7.12.0 con SQLCipher"
-   git tag 7.12.0-sqlcipher.1
-   git push origin sqlcipher --tags
-   ```
-5. Nel progetto, `Packages/Package.swift` dipende dal fork con `exact: "7.12.0-sqlcipher.1"`. In Xcode: File › Packages › Reset Package Caches, poi Resolve Package Versions. Il `Package.resolved` aggiornato va nel commit.
-
-**Aggiornare GRDB:** `git fetch upstream --tags`, nuovo ramo dal nuovo tag, stesse modifiche del punto 3, tag `<versione>-sqlcipher.1`, e nuovo `exact:` nel progetto.
+- versione esatta (`exact:`) in `Packages/Package.swift`: un aggiornamento entra solo quando lo si decide;
+- `Package.resolved` nel repository: registra il commit di ogni dipendenza, e Xcode segnala un tag spostato;
+- prima di aggiornare, leggere il changelog di GRDB e di SQLCipher e guardare le differenze del `Package.swift` del fork, la parte che decide cosa viene collegato;
+- dopo, i test di `SQLCipherTests` devono passare: se tornasse il SQLite di sistema, se ne accorgerebbero.
 
 **Prova:** `SQLCipherTests` verifica che `PRAGMA cipher_version` risponda 4.x (con il SQLite di sistema non risponde), che il file cifrato si apra solo con la sua chiave, che nei suoi byte non ci sia testo in chiaro, e che un database in chiaro si apra ancora senza chiave, cosa che servirà per la migrazione e per l'import. Il controllo dall'app, e non solo dai test, arriva con lo step 3, all'apertura del database.
 
-**Esito (14 novembre 2026):** prova superata. Il progetto risolve GRDB dal fork (`7.12.0-sqlcipher.1`) e SQLCipher.swift alla 4.20.0; compila su iPhone e Mac, e tutti i test passano, compresi quelli di `SQLCipherTests`.
+**Esito (14 novembre 2026):** prova superata con il fork `Cirino99/GRDB.swift` (`7.12.0-sqlcipher.1`) e SQLCipher.swift 4.20.0: compila su iPhone e Mac, e tutti i test passano, compresi quelli di `SQLCipherTests`. Lo stesso giorno, dopo il passaggio al fork ufficiale (`sqlcipher/GRDB.swift` 7.12.0), la prova è stata ripetuta con lo stesso esito.
 
 ### 3.2 Gerarchia delle chiavi
 
@@ -232,7 +213,7 @@ Tutte confermate il 14 novembre 2026.
 
 | # | Decisione | Scelta |
 |---|---|---|
-| 1 | Integrazione SPM (§ 3.1) | Fork di GRDB su GitHub con le modifiche "GRDB+SQLCipher", e SQLCipher.swift ufficiale |
+| 1 | Integrazione SPM (§ 3.1) | Fork ufficiale `sqlcipher/GRDB.swift`, versione esatta, e SQLCipher.swift ufficiale |
 | 2 | Seconda dipendenza esterna (§ 3.1) | Sì, SQLCipher Community |
 | 3 | Secure Enclave nella gerarchia delle chiavi (§ 3.2) | Sì, contro i tentativi fuori dal dispositivo |
 | 4 | Chiusura del database al blocco (§ 3.4) | Sì, con la chiave cancellata dalla memoria |
