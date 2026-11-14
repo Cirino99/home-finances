@@ -31,6 +31,14 @@ public final class DatabaseStore: DataTransferring {
     private let passwordIterations: UInt32
     /// Chiave con cui il database è aperto, o si è provato ad aprirlo; si cancella alla chiusura.
     private var encryptionKey: String?
+    private var isOpening = false
+    /// Cresce a ogni chiusura: un'apertura in corso che la vede cambiare non apre più nulla.
+    private var closeCount = 0
+    /// Sblocco arrivato mentre un'apertura era in corso: va eseguito quando quella finisce.
+    private var hasPendingOpen = false
+    /// Ultimo errore della migrazione alla cifratura: il database resta in chiaro e si riprova al prossimo
+    /// sblocco con la chiave (§ 5.7). `nil` se è riuscita o non serviva.
+    public private(set) var encryptionMigrationError: (any Error)?
 
     /// `opener` e `passwordIterations` si possono sostituire nei test: per simulare un errore
     /// durante la sostituzione, e per non calcolare ogni volta una chiave lenta.
@@ -79,12 +87,17 @@ public final class DatabaseStore: DataTransferring {
 
     /// Apre il database dopo lo sblocco (§ 5.7). Un database nuovo nasce cifrato con `encryptionKey`.
     ///
-    /// Un database in chiaro di prima della cifratura si apre ancora senza chiave, finché la migrazione
-    /// non lo cifra (piano della cifratura, step 4). Uno cifrato senza chiave non si apre: `keyRequired`.
-    public func open(encryptionKey: String?) {
+    /// Con la chiave, prima di aprire cifra i dati di prima della cifratura: database e copie di sicurezza.
+    /// Senza chiave (Face ID con il vecchio token) un database in chiaro si apre ancora in chiaro, e la
+    /// migrazione aspetta il PIN. Un database cifrato senza chiave non si apre: `keyRequired`.
+    public func open(encryptionKey: String?) async {
         if case .ready = state { return }
         self.encryptionKey = encryptionKey
-        state = openState()
+        guard !isOpening else {
+            hasPendingOpen = true
+            return
+        }
+        await reopen()
     }
 
     /// Al blocco (§ 5.7): chiude le connessioni e dimentica la chiave. Riaprire richiede di nuovo lo sblocco.
@@ -94,14 +107,50 @@ public final class DatabaseStore: DataTransferring {
         }
         state = .closed
         encryptionKey = nil
+        closeCount += 1
     }
 
     /// Riprova se l'apertura era fallita: subito dopo un riavvio iOS può avviare l'app
     /// quando il file non è ancora accessibile. Usa la chiave dell'ultimo tentativo.
-    public func retryIfNeeded() {
-        if case .failed = state {
+    public func retryIfNeeded() async {
+        guard case .failed = state, !isOpening else { return }
+        await reopen()
+    }
+
+    private func reopen() async {
+        isOpening = true
+        let closes = closeCount
+        await migrateIfNeeded()
+        isOpening = false
+        if closeCount == closes {
+            hasPendingOpen = false
             state = openState()
+        } else if hasPendingOpen {
+            // Bloccata e risbloccata durante la migrazione: si riparte con la chiave del nuovo sblocco.
+            hasPendingOpen = false
+            await reopen()
         }
+        // Altrimenti è stata bloccata: la chiave è già stata dimenticata, non si apre nulla.
+    }
+
+    /// Cifra i dati di prima della cifratura, se c'è la chiave. Se non riesce, per esempio per lo spazio,
+    /// tutto resta com'era: il database si apre in chiaro e si riprova al prossimo sblocco.
+    private func migrateIfNeeded() async {
+        guard let url, let encryptionKey else { return }
+        let backups = existingBackups()
+        guard DatabaseEncryptionMigration.isNeeded(databaseURL: url, backups: backups) else { return }
+        do {
+            try await Self.migrate(databaseURL: url, backups: backups, key: encryptionKey)
+            encryptionMigrationError = nil
+        } catch {
+            encryptionMigrationError = error
+        }
+    }
+
+    /// Lontano dal main actor: la copia di un database grande richiede tempo.
+    @concurrent
+    private nonisolated static func migrate(databaseURL: URL, backups: [URL], key: String) async throws {
+        try DatabaseEncryptionMigration.run(databaseURL: databaseURL, backups: backups, key: key)
     }
 
     /// Ci sono dati da proteggere? Serve ad app bloccata, senza la chiave (§ 5.7): decide se il PIN
@@ -143,7 +192,12 @@ public final class DatabaseStore: DataTransferring {
             key = encryptionKey
         }
         do {
-            return .ready(try opener(url, key))
+            let database = try opener(url, key)
+            // Dopo una migrazione, o per un database cifrato di cui si era perso il segno.
+            if key != nil, (try? database.isSeeded()) == true {
+                markSeeded()
+            }
+            return .ready(database)
         } catch {
             return .failed(error)
         }

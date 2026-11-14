@@ -32,7 +32,7 @@ final class DatabaseStoreTests {
             opener: opener
         )
         // In chiaro: export e import di un database cifrato arrivano con lo step 5 del piano della cifratura.
-        store.open(encryptionKey: nil)
+        await store.open(encryptionKey: nil)
         let database = try currentDatabase(of: store)
         try await database.seedIfNeeded(currency: "EUR")
         for index in 0..<operations {
@@ -592,14 +592,14 @@ final class DatabaseStoreTests {
             Issue.record("Lo store non apre nulla prima dello sblocco")
             return
         }
-        store.open(encryptionKey: nil)
+        await store.open(encryptionKey: nil)
         guard case .failed = store.state else {
             Issue.record("La prima apertura doveva fallire")
             return
         }
         #expect(!store.hasExistingData, "Nessun file: nessun dato")
 
-        store.retryIfNeeded()
+        await store.retryIfNeeded()
 
         #expect(try currentDatabase(of: store).sqliteVersion().isEmpty == false)
         #expect(!store.hasExistingData, "Database nuovo, senza i dati iniziali")

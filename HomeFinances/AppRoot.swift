@@ -38,9 +38,11 @@ struct AppRoot: View {
     }
 
     private func retryDatabase() {
-        store.retryIfNeeded()
-        // Ora si può sapere se ci sono dati: può cambiare ciò che si deve chiedere.
-        appLock.reload()
+        Task {
+            await store.retryIfNeeded()
+            // Ora si può sapere se ci sono dati: può cambiare ciò che si deve chiedere.
+            appLock.reload()
+        }
     }
 
     /// Il database si apre solo ad app sbloccata, con la chiave che lo sblocco ha dato (§ 5.7).
@@ -70,7 +72,8 @@ private struct UnlockedContent: View {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .task {
-                    store.open(encryptionKey: appLock.databaseKey?.sqlCipherKey)
+                    // Con la chiave, la prima volta cifra anche i dati di prima della cifratura (§ 5.7).
+                    await store.open(encryptionKey: appLock.databaseKey?.sqlCipherKey)
                 }
         case .ready(let database):
             SeededContent(database: database, store: store, appLock: appLock, router: router)
@@ -92,8 +95,10 @@ private struct UnlockedContent: View {
                 Text(error.localizedDescription)
             } actions: {
                 Button("Riprova") {
-                    store.retryIfNeeded()
-                    appLock.reload()
+                    Task {
+                        await store.retryIfNeeded()
+                        appLock.reload()
+                    }
                 }
             }
         }

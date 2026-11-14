@@ -5,3 +5,7 @@
 // Non impostare il Team dall'editor di Xcode: lo scriverebbe nel progetto versionato.
 
 #include? "Local.xcconfig"
+
+// Dove l'app cerca i framework incorporati, come SQLCipher (§ 5.7): senza, il caricamento fallisce all'avvio.
+LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/Frameworks
+LD_RUNPATH_SEARCH_PATHS[sdk=macosx*] = $(inherited) @executable_path/../Frameworks

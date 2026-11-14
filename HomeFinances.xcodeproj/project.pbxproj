@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		A10000000000000000000001 /* HomeFinancesKit in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000002 /* HomeFinancesKit */; };
+		A10000000000000000000004 /* SQLCipher in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000005 /* SQLCipher */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +45,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000001 /* HomeFinancesKit in Frameworks */,
+				A10000000000000000000004 /* SQLCipher in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -98,6 +100,7 @@
 			name = HomeFinances;
 			packageProductDependencies = (
 				A10000000000000000000002 /* HomeFinancesKit */,
+				A10000000000000000000005 /* SQLCipher */,
 			);
 			productName = HomeFinances;
 			productReference = A10000000000000000000010 /* HomeFinances.app */;
@@ -130,6 +133,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				A10000000000000000000003 /* XCLocalSwiftPackageReference "Packages" */,
+				A10000000000000000000007 /* XCRemoteSwiftPackageReference "SQLCipher.swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A10000000000000000000041 /* Products */;
@@ -380,10 +384,26 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		A10000000000000000000007 /* XCRemoteSwiftPackageReference "SQLCipher.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sqlcipher/SQLCipher.swift.git";
+			requirement = {
+				kind = exactVersion;
+				version = 4.20.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		A10000000000000000000002 /* HomeFinancesKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = HomeFinancesKit;
+		};
+		A10000000000000000000005 /* SQLCipher */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000007 /* XCRemoteSwiftPackageReference "SQLCipher.swift" */;
+			productName = SQLCipher;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

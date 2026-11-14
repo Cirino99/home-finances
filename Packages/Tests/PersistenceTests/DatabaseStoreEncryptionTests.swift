@@ -36,7 +36,7 @@ final class DatabaseStoreEncryptionTests {
 
     @Test func newDatabaseIsEncryptedAndReopensWithTheKey() async throws {
         let store = makeStore()
-        store.open(encryptionKey: Self.key)
+        await store.open(encryptionKey: Self.key)
         try await database(of: store).seedIfNeeded(currency: "EUR")
         store.close()
 
@@ -48,44 +48,42 @@ final class DatabaseStoreEncryptionTests {
         let bytes = try Data(contentsOf: url)
         #expect(bytes.range(of: Data(DefaultData.accountName.utf8)) == nil, "Nessun dato leggibile nel file")
 
-        store.open(encryptionKey: Self.key)
+        await store.open(encryptionKey: Self.key)
         #expect(try database(of: store).isSeeded())
     }
 
     @Test func closingForgetsTheKey() async throws {
         let store = makeStore()
-        store.open(encryptionKey: Self.key)
+        await store.open(encryptionKey: Self.key)
         store.close()
 
-        store.open(encryptionKey: nil)
+        await store.open(encryptionKey: nil)
         #expect(failure(of: store) as? PersistenceError == .keyRequired)
     }
 
     @Test func wrongKeyDoesNotOpen() async throws {
         let store = makeStore()
-        store.open(encryptionKey: Self.key)
+        await store.open(encryptionKey: Self.key)
         try await database(of: store).seedIfNeeded(currency: "EUR")
         store.close()
 
-        store.open(encryptionKey: Self.otherKey)
+        await store.open(encryptionKey: Self.otherKey)
         let error = try #require(failure(of: store))
         #expect(error as? PersistenceError != .keyRequired, "Una chiave c'era: è sbagliata")
     }
 
-    /// Fino alla migrazione un database di prima della cifratura si apre in chiaro, anche con la chiave.
-    @Test func plaintextDatabaseStillOpensWithoutEncryption() async throws {
+    /// Senza chiave (Face ID con il vecchio token) un database di prima della cifratura si apre in chiaro:
+    /// la migrazione aspetta il PIN.
+    @Test func plaintextDatabaseOpensWithoutKeyAndStaysPlaintext() async throws {
         let plain = try AppDatabase.open(at: url)
         try await plain.seedIfNeeded(currency: "EUR")
         try plain.close()
 
         let store = makeStore()
-        store.open(encryptionKey: Self.key)
+        await store.open(encryptionKey: nil)
         #expect(try database(of: store).isSeeded())
         store.close()
         #expect(AppDatabase.fileFormat(at: url) == .plaintext)
-
-        store.open(encryptionKey: nil)
-        #expect(try database(of: store).isSeeded(), "Anche dopo il vecchio Face ID, senza chiave")
     }
 
     @Test func fileFormatIsReadWithoutOpening() throws {
@@ -107,11 +105,11 @@ final class DatabaseStoreEncryptionTests {
         let store = makeStore()
         #expect(!store.hasExistingData, "Nessun file")
 
-        store.open(encryptionKey: Self.key)
+        await store.open(encryptionKey: Self.key)
         store.close()
         #expect(!store.hasExistingData, "Creato all'onboarding ma mai usato")
 
-        store.open(encryptionKey: Self.key)
+        await store.open(encryptionKey: Self.key)
         try await database(of: store).seedIfNeeded(currency: "EUR")
         store.markSeeded()
         store.close()

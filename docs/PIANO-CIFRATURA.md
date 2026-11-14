@@ -196,7 +196,7 @@ Ogni step si chiude con il codice che compila e i test che passano. Compilazione
 
 ### 4.3 Note di sviluppo
 
-- **Step 1:** fork ufficiale `sqlcipher/GRDB.swift` (§ 3.1).
+- **Step 1:** fork ufficiale `sqlcipher/GRDB.swift` (§ 3.1). `SQLCipher.swift` è un XCFramework già compilato e firmato da Zetetic: va aggiunto **direttamente al target dell'app** con "Embed & Sign", alla stessa versione esatta risolta per GRDB. Altrimenti Xcode non lo copia nell'app e macOS ne rifiuta il caricamento perché firmato da un altro Team ("different Team IDs"); nel simulatore iOS il controllo non c'è, su un iPhone vero sì. Nel progetto: pacchetto `SQLCipher.swift` a versione esatta e prodotto `SQLCipher` collegato direttamente al target, che Xcode incorpora e firma da solo (una fase di copia scritta a mano non funziona con i prodotti dei pacchetti), e `LD_RUNPATH_SEARCH_PATHS` in `Config/Base.xcconfig` (`@executable_path/Frameworks` su iOS, `@executable_path/../Frameworks` su macOS), che prima mancava perché l'app non incorporava framework. Le versioni si decidono in due punti distinti: GRDB in `Packages/Package.swift`, SQLCipher nel progetto Xcode. Il fork chiede SQLCipher `from: "4.11.0"` e SwiftPM risolve una sola versione per tutto: quella esatta del progetto vale anche per GRDB. Se una nuova versione del fork chiedesse un SQLCipher più recente, la risoluzione dei pacchetti fallisce finché non si aggiorna anche il progetto.
 - **Step 2:** la chiave nasce con il PIN dell'onboarding, oppure, per chi ha già un PIN, al primo sblocco con il PIN, che sostituisce l'hash; nello stesso momento il token di Face ID diventa la copia della chiave. Fino ad allora Face ID sblocca, ma senza dare la chiave. Se manca la chiave del dispositivo è un errore, non un PIN sbagliato, e non consuma tentativi. Dove manca il Secure Enclave (simulatore) il livello del dispositivo usa una chiave software nel Keychain, `ThisDeviceOnly`.
 - **Step 3:**
   - lo store nasce chiuso e si apre allo sblocco con la chiave; al blocco si chiude e la dimentica;
@@ -205,6 +205,12 @@ Ogni step si chiude con il codice che compila e i test che passano. Compilazione
   - "ci sono dati?" senza aprire il database (§ 3.6): nessun file, no; file in chiaro, lo si legge; file cifrato, sì se accanto c'è il segno `homefinances.sqlite.seeded`, lasciato dall'inserimento dei dati iniziali e dall'import;
   - fino allo step 5 export, import e copie di sicurezza funzionano solo con il database in chiaro: con quello cifrato l'export fallisce con un errore e l'import si ferma prima di toccare i dati;
   - la chiave resta in memoria finché l'`AppDatabase` chiuso non viene rilasciato: Swift non garantisce di poterla azzerare.
+- **Step 4:**
+  - la migrazione parte all'apertura con la chiave, quindi al primo sblocco con il PIN (o con Face ID, dopo che il PIN ha sostituito il token); senza chiave il database resta in chiaro;
+  - database e copie "prima-import" si cifrano uno alla volta con `sqlcipher_export` in un file accanto (`….encrypting`), controllato (`integrity_check` e stesse righe per tabella) prima della sostituzione atomica;
+  - il segnaposto `homefinances.sqlite.encryption-migration` dice solo che una migrazione è cominciata: a ogni tentativo si decide dal formato reale dei file, quindi un'interruzione in qualsiasi punto riparte senza perdere dati;
+  - se la migrazione fallisce (per esempio per lo spazio) tutto resta com'era, il database si apre in chiaro e si riprova al prossimo sblocco; l'errore è in `DatabaseStore.encryptionMigrationError`, da mostrare allo step 6;
+  - l'apertura dello store è asincrona e la migrazione gira lontano dal main thread; un blocco durante la migrazione non apre nulla, e uno sblocco successivo riparte con la nuova chiave.
 
 ### 4.4 Rischi
 
