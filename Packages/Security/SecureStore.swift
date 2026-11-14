@@ -15,13 +15,19 @@ public struct SecureStoreKey: RawRepresentable, Hashable, Sendable {
         self.rawValue = rawValue
     }
 
-    /// Salt, hash e iterazioni del PIN.
+    /// Salt, hash e iterazioni del PIN, prima della cifratura: resta fino al primo sblocco con il PIN.
     static let pinCredential = SecureStoreKey(rawValue: "pin-credential")
     /// Contatore dei tentativi errati e fine dell'attesa: nel Keychain per sopravvivere alla reinstallazione.
     static let lockoutState = SecureStoreKey(rawValue: "lockout-state")
     /// La sua presenza significa "biometria attiva": distingue un token mai creato da uno invalidato dal sistema.
     /// Il nome storico fa sì che chi aveva già attivato la biometria venga invitato a riattivarla.
     static let biometricEnabled = SecureStoreKey(rawValue: "biometric-domain-state")
+    /// Chiave del database avvolta dal PIN e poi dal dispositivo (§ 5.7). Sostituisce `pinCredential`.
+    static let wrappedDatabaseKey = SecureStoreKey(rawValue: "wrapped-database-key")
+    /// Chiave del Secure Enclave, o software dove manca, che avvolge la chiave del database.
+    static let deviceWrappingKey = SecureStoreKey(rawValue: "device-wrapping-key")
+    /// La copia biometrica contiene la chiave del database e non il vecchio token casuale.
+    static let biometricHoldsDatabaseKey = SecureStoreKey(rawValue: "biometric-holds-database-key")
 }
 
 extension SecureStore {

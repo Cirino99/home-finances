@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// Stato di blocco dell'app (§ 5.4). Il database resta aperto: il blocco agisce sulla UI.
+/// Stato di blocco dell'app (§ 5.4). Sbloccare dà anche la chiave del database (§ 5.7), che si cancella al blocco.
 @MainActor
 @Observable
 public final class AppLock {
@@ -35,12 +35,17 @@ public final class AppLock {
     public var isPrivacyCovered = false
     /// Proposta di riattivare la biometria, disattivata perché le biometrie registrate sono cambiate.
     public var offersBiometricReenable = false
+    /// Chiave del database, solo ad app sbloccata (§ 5.7). `nil` da bloccata, e anche da sbloccata se si è
+    /// entrati con Face ID prima che il PIN creasse la chiave: chi ha già un PIN la ottiene al primo sblocco con il PIN.
+    public private(set) var databaseKey: DatabaseKey?
 
     private let passcode: PasscodeService
     private let biometrics: BiometricLock
     private let authenticator: any BiometricAuthenticator
     private let hasExistingData: () -> Bool
     private var isSetupPINSaved = false
+    /// Chiave creata con il PIN dell'onboarding, in attesa di `finishSetup`.
+    private var setupKey: DatabaseKey?
     private var biometricPromptedSinceLock = false
     private var biometryChangedSinceUnlock = false
 
@@ -53,11 +58,12 @@ public final class AppLock {
         store: any SecureStore,
         authenticator: any BiometricAuthenticator,
         hasExistingData: @escaping () -> Bool,
+        deviceWrapper: (any DeviceKeyWrapper)? = nil,
         pinIterations: Int = PasscodeService.defaultIterations,
         clock: SecurityClock = .system
     ) {
-        passcode = PasscodeService(store: store, iterations: pinIterations, clock: clock)
-        biometrics = BiometricLock(store: store, authenticator: authenticator)
+        passcode = PasscodeService(store: store, deviceWrapper: deviceWrapper, iterations: pinIterations, clock: clock)
+        biometrics = BiometricLock(store: store, authenticator: authenticator, passcode: passcode)
         self.authenticator = authenticator
         self.hasExistingData = hasExistingData
         load()
@@ -104,6 +110,7 @@ public final class AppLock {
     public func lock() {
         guard phase == .unlocked else { return }
         phase = .locked
+        databaseKey = nil
         biometricPromptedSinceLock = false
         offersBiometricReenable = false
         updateCanResetForgottenPIN()
@@ -117,10 +124,15 @@ public final class AppLock {
         defer { isBusy = false }
 
         do {
-            let result = try await passcode.verify(pin)
+            let unlock = try await passcode.unlock(pin)
+            let result = unlock.verification
             switch result {
             case .success:
-                didUnlock()
+                if let key = unlock.key {
+                    // Non blocca lo sblocco: se fallisce, Face ID resta com'era e si riprova al prossimo PIN.
+                    try? await biometrics.replaceLegacyToken(with: key)
+                }
+                didUnlock(key: unlock.key)
             case .wrong(_, let until):
                 lockedUntil = until
             case .lockedOut(let until):
@@ -141,9 +153,9 @@ public final class AppLock {
 
         do {
             switch try await biometrics.unlock(reason: Self.biometricReason) {
-            case .success:
+            case .success(let key):
                 try passcode.resetLockout()
-                didUnlock()
+                didUnlock(key: key)
             case .biometryChanged:
                 isBiometricUnlockEnabled = false
                 biometryChangedSinceUnlock = true
@@ -161,8 +173,9 @@ public final class AppLock {
         await unlockWithBiometrics()
     }
 
-    private func didUnlock() {
+    private func didUnlock(key: DatabaseKey?) {
         lockedUntil = nil
+        databaseKey = key
         phase = .unlocked
         canResetForgottenPIN = false
         if biometryChangedSinceUnlock {
@@ -185,6 +198,7 @@ public final class AppLock {
         try passcode.removeCredential()
         isBiometricUnlockEnabled = false
         lockedUntil = nil
+        databaseKey = nil
         biometricPromptedSinceLock = false
         canResetForgottenPIN = false
         phase = .setup(.firstLaunch)
@@ -204,7 +218,7 @@ public final class AppLock {
         if reason == .restoredData, !isRestoreAuthorized { throw AppLockError.restoreNotAuthorized }
         // Non si sovrascrive mai un PIN esistente da qui: per cambiarlo serve quello attuale.
         guard try !passcode.hasPIN() else { throw AppLockError.invalidState }
-        try await passcode.setPIN(pin)
+        setupKey = try await passcode.setPIN(pin)
         isSetupPINSaved = true
     }
 
@@ -212,6 +226,8 @@ public final class AppLock {
         guard case .setup = phase, isSetupPINSaved else { return }
         // Vale solo durante l'onboarding: dopo, le azioni di sicurezza richiedono l'app sbloccata.
         isSetupPINSaved = false
+        databaseKey = setupKey
+        setupKey = nil
         phase = .unlocked
     }
 
@@ -220,7 +236,9 @@ public final class AppLock {
     /// Consentito ad app sbloccata o durante l'onboarding, dopo aver scelto il PIN.
     public func enableBiometricUnlock() async throws {
         guard phase == .unlocked || isSetupPINSaved else { throw AppLockError.invalidState }
-        try await biometrics.enable(reason: String(localized: "Attiva lo sblocco dei tuoi dati finanziari"))
+        // La voce biometrica contiene la chiave: serve averla, cioè essere entrati con il PIN.
+        guard let key = databaseKey ?? setupKey else { throw AppLockError.keyUnavailable }
+        try await biometrics.enable(key: key, reason: String(localized: "Attiva lo sblocco dei tuoi dati finanziari"))
         isBiometricUnlockEnabled = true
         offersBiometricReenable = false
     }
@@ -233,11 +251,19 @@ public final class AppLock {
 
     public func changePIN(current: String, new: String) async throws -> PINVerification {
         guard phase == .unlocked else { throw AppLockError.invalidState }
-        return try await passcode.changePIN(current: current, new: new)
+        let result = try await passcode.changePINReturningKey(current: current, new: new)
+        if let key = result.key {
+            // Stessa chiave di prima; se la sessione era iniziata con il vecchio token di Face ID, ora c'è.
+            databaseKey = key
+            try? await biometrics.replaceLegacyToken(with: key)
+        }
+        return result.verification
     }
 }
 
 public enum AppLockError: Error {
     case invalidState
     case restoreNotAuthorized
+    /// Serve la chiave del database, che si ottiene sbloccando con il PIN.
+    case keyUnavailable
 }

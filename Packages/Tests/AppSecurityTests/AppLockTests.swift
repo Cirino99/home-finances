@@ -7,12 +7,14 @@ struct AppLockTests {
     let store = InMemorySecureStore()
     let authenticator = FakeAuthenticator()
     let clock = TestClock()
+    let deviceWrapper = FakeDeviceKeyWrapper()
 
     func makeAppLock(hasExistingData: Bool = false) -> AppLock {
         AppLock(
             store: store,
             authenticator: authenticator,
             hasExistingData: { hasExistingData },
+            deviceWrapper: deviceWrapper,
             pinIterations: 1,
             clock: clock.security
         )
@@ -119,7 +121,7 @@ struct AppLockTests {
         let appLock = try await onboard(enableBiometrics: true)
         try appLock.disableBiometricUnlock()
         #expect(!appLock.isBiometricUnlockEnabled)
-        #expect(authenticator.state.withLock { $0.hasToken } == false)
+        #expect(!authenticator.hasToken)
     }
 
     // MARK: PIN dimenticato

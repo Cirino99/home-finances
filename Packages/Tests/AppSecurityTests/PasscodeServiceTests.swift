@@ -5,9 +5,10 @@ import Testing
 struct PasscodeServiceTests {
     let store = InMemorySecureStore()
     let clock = TestClock()
+    let deviceWrapper = FakeDeviceKeyWrapper()
 
     func makeService(iterations: Int = 1) -> PasscodeService {
-        PasscodeService(store: store, iterations: iterations, clock: clock.security)
+        PasscodeService(store: store, deviceWrapper: deviceWrapper, iterations: iterations, clock: clock.security)
     }
 
     /// Cinque tentativi errati: scatta l'attesa di 1 minuto.
@@ -79,10 +80,18 @@ struct PasscodeServiceTests {
         }
     }
 
+    /// Nel Keychain c'è solo la chiave avvolta: niente PIN, niente chiave in chiaro, niente hash.
     @Test func pinIsNeverStoredInClear() async throws {
-        try await makeService().setPIN("123456")
-        let stored = try #require(try store.data(for: .pinCredential))
+        let key = try await makeService().setPIN("123456")
+        let stored = try #require(try store.data(for: .wrappedDatabaseKey))
         #expect(stored.range(of: Data("123456".utf8)) == nil)
+        #expect(stored.range(of: key.rawValue) == nil)
+        #expect(try store.data(for: .pinCredential) == nil)
+    }
+
+    func storedPINWrappedKey() throws -> PINWrappedKey {
+        let stored = try #require(try store.data(for: .wrappedDatabaseKey))
+        return try JSONDecoder().decode(PINWrappedKey.self, from: deviceWrapper.unwrap(stored))
     }
 
     @Test func verifiesCorrectAndWrongPIN() async throws {
@@ -151,9 +160,11 @@ struct PasscodeServiceTests {
         #expect(try await service.changePIN(current: "000000", new: "111111") == .wrong(failedAttempts: 1, lockedUntil: nil))
         #expect(try await service.verify("123456") == .success)
 
-        let saltBefore = try #require(try store.load(PINCredential.self, for: .pinCredential)).salt
+        let key = try #require(try await service.unlock("123456").key)
+        let saltBefore = try storedPINWrappedKey().salt
         #expect(try await service.changePIN(current: "123456", new: "111111") == .success)
-        #expect(try store.load(PINCredential.self, for: .pinCredential)?.salt != saltBefore)
+        #expect(try storedPINWrappedKey().salt != saltBefore)
+        #expect(try await service.unlock("111111").key == key, "Stessa chiave: il database non si ricifra")
         #expect(try await service.verify("123456") == .wrong(failedAttempts: 1, lockedUntil: nil))
         #expect(try await service.verify("111111") == .success)
     }
@@ -161,7 +172,7 @@ struct PasscodeServiceTests {
     @Test func upgradesIterationsAfterSuccessfulVerification() async throws {
         try await makeService(iterations: 1).setPIN("123456")
         #expect(try await makeService(iterations: 2).verify("123456") == .success)
-        #expect(try store.load(PINCredential.self, for: .pinCredential)?.iterations == 2)
+        #expect(try storedPINWrappedKey().iterations == 2)
         #expect(try await makeService(iterations: 2).verify("123456") == .success)
     }
 }

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Synchronization
 @testable import AppSecurity
@@ -45,7 +46,8 @@ struct AuthenticationFailed: Error {}
 final class FakeAuthenticator: BiometricAuthenticator {
     struct State {
         var biometry = BiometryKind.faceID
-        var hasToken = false
+        /// Contenuto della voce biometrica; `nil` se non c'è.
+        var secret: Data?
         var succeeds = true
         var biometricPrompts = 0
         var deviceOwnerPrompts = 0
@@ -57,28 +59,32 @@ final class FakeAuthenticator: BiometricAuthenticator {
         state.withLock { $0.biometry }
     }
 
-    func createUnlockToken() async throws {
-        state.withLock { $0.hasToken = true }
+    var hasToken: Bool {
+        state.withLock { $0.secret != nil }
     }
 
-    func readUnlockToken(reason: String) async throws -> BiometricTokenResult {
-        // Come il Keychain: senza il token non compare nessun prompt.
-        guard state.withLock({ $0.hasToken }) else { return .invalidated }
+    func storeUnlockSecret(_ secret: Data) async throws {
+        state.withLock { $0.secret = secret }
+    }
+
+    func readUnlockSecret(reason: String) async throws -> BiometricSecretResult {
+        // Come il Keychain: senza la voce non compare nessun prompt.
+        guard let secret = state.withLock({ $0.secret }) else { return .invalidated }
         let succeeds = state.withLock {
             $0.biometricPrompts += 1
             return $0.succeeds
         }
         if !succeeds { throw AuthenticationFailed() }
-        return .valid
+        return .secret(secret)
     }
 
-    func removeUnlockToken() throws {
-        state.withLock { $0.hasToken = false }
+    func removeUnlockSecret() throws {
+        state.withLock { $0.secret = nil }
     }
 
-    /// Il sistema cancella il token quando cambiano i volti o le impronte registrati.
+    /// Il sistema cancella la voce quando cambiano i volti o le impronte registrati.
     func changeEnrolledBiometrics() {
-        state.withLock { $0.hasToken = false }
+        state.withLock { $0.secret = nil }
     }
 
     func authenticateDeviceOwner(reason: String) async throws {
@@ -100,5 +106,31 @@ extension Data {
             index = next
         }
         self.init(bytes)
+    }
+}
+
+/// Livello del dispositivo simulato: AES-GCM con una chiave in memoria al posto del Secure Enclave.
+/// `reset()` la sostituisce, come la perdita della chiave del dispositivo.
+final class FakeDeviceKeyWrapper: DeviceKeyWrapper {
+    private let key = Mutex(SymmetricKey(size: .bits256))
+    private let wraps = Mutex(0)
+
+    var wrapCount: Int { wraps.withLock { $0 } }
+
+    func wrap(_ data: Data) throws -> Data {
+        wraps.withLock { $0 += 1 }
+        return try AES.GCM.seal(data, using: key.withLock { $0 }).combined!
+    }
+
+    func unwrap(_ data: Data) throws -> Data {
+        do {
+            return try AES.GCM.open(AES.GCM.SealedBox(combined: data), using: key.withLock { $0 })
+        } catch {
+            throw DatabaseKeyError.deviceKeyUnavailable
+        }
+    }
+
+    func reset() throws {
+        key.withLock { $0 = SymmetricKey(size: .bits256) }
     }
 }

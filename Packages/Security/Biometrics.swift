@@ -29,24 +29,25 @@ public extension BiometryKind {
     }
 }
 
-public enum BiometricTokenResult: Sendable, Equatable {
-    case valid
-    /// Il token non c'è più: il sistema lo cancella quando cambiano i volti o le impronte registrati.
+public enum BiometricSecretResult: Sendable, Equatable {
+    case secret(Data)
+    /// La voce non c'è più: il sistema la cancella quando cambiano i volti o le impronte registrati.
     case invalidated
 }
 
 /// Accesso a Face ID / Touch ID e al codice del dispositivo, astratto per i test.
 ///
-/// Lo sblocco legge un token dal Keychain protetto dalla biometria, invece di fidarsi del solo esito di
-/// `evaluatePolicy`: è il Secure Enclave a decidere, e lo stesso meccanismo potrà custodire la chiave di cifratura.
+/// Lo sblocco legge una voce del Keychain protetta dalla biometria, invece di fidarsi del solo esito di
+/// `evaluatePolicy`: è il Secure Enclave a decidere. La voce contiene la chiave del database (§ 5.7).
 public protocol BiometricAuthenticator: Sendable {
     /// Biometria disponibile e configurata in questo momento.
     func availableBiometry() -> BiometryKind
-    /// Crea il token legato alle biometrie registrate ora, sostituendo quello precedente.
-    func createUnlockToken() async throws
-    /// Chiede la biometria e legge il token. Lancia un errore se è annullata o non riconosciuta.
-    func readUnlockToken(reason: String) async throws -> BiometricTokenResult
-    func removeUnlockToken() throws
+    /// Salva `secret` in una voce legata alle biometrie registrate ora, sostituendo quella precedente.
+    /// Non chiede la biometria: la scrittura non la richiede.
+    func storeUnlockSecret(_ secret: Data) async throws
+    /// Chiede la biometria e legge la voce. Lancia un errore se è annullata o non riconosciuta.
+    func readUnlockSecret(reason: String) async throws -> BiometricSecretResult
+    func removeUnlockSecret() throws
     /// Biometria o codice del dispositivo: dimostra di essere il proprietario (§ 5.5).
     func authenticateDeviceOwner(reason: String) async throws
 }
@@ -73,7 +74,7 @@ public struct SystemBiometricAuthenticator: BiometricAuthenticator {
     }
 
     @concurrent
-    public func createUnlockToken() async throws {
+    public func storeUnlockSecret(_ secret: Data) async throws {
         var error: Unmanaged<CFError>?
         guard let accessControl = SecAccessControlCreateWithFlags(
             nil,
@@ -87,17 +88,17 @@ public struct SystemBiometricAuthenticator: BiometricAuthenticator {
             throw BiometricError.unavailable
         }
 
-        try removeUnlockToken()
+        try removeUnlockSecret()
         var query = baseQuery
         query[kSecAttrAccessControl as String] = accessControl
-        query[kSecValueData as String] = try PINHasher.randomBytes(count: 32)
+        query[kSecValueData as String] = secret
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else { throw KeychainError(status: status) }
     }
 
     /// `@concurrent` perché la lettura resta bloccata finché l'utente non risponde al prompt.
     @concurrent
-    public func readUnlockToken(reason: String) async throws -> BiometricTokenResult {
+    public func readUnlockSecret(reason: String) async throws -> BiometricSecretResult {
         let context = LAContext()
         context.localizedReason = reason
         context.localizedFallbackTitle = String(localized: "Usa il PIN")
@@ -111,7 +112,8 @@ public struct SystemBiometricAuthenticator: BiometricAuthenticator {
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         switch status {
         case errSecSuccess:
-            return .valid
+            guard let data = result as? Data else { throw KeychainError(status: errSecDecode) }
+            return .secret(data)
         case errSecItemNotFound:
             return .invalidated
         default:
@@ -119,7 +121,7 @@ public struct SystemBiometricAuthenticator: BiometricAuthenticator {
         }
     }
 
-    public func removeUnlockToken() throws {
+    public func removeUnlockSecret() throws {
         let status = SecItemDelete(baseQuery as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw KeychainError(status: status)
@@ -142,7 +144,8 @@ public struct SystemBiometricAuthenticator: BiometricAuthenticator {
 }
 
 public enum BiometricUnlockResult: Sendable, Equatable {
-    case success
+    /// Sbloccato. `key` è la chiave del database; `nil` se la voce è ancora il token di prima della cifratura.
+    case success(key: DatabaseKey?)
     /// Le biometrie registrate sono cambiate: lo sblocco biometrico è stato disattivato (§ 5.3).
     case biometryChanged
     case unavailable
@@ -153,36 +156,49 @@ public enum BiometricError: Error {
     case unavailable
 }
 
-/// Attivazione e uso dello sblocco biometrico.
+/// Attivazione e uso dello sblocco biometrico. La voce biometrica contiene la chiave del database
+/// avvolta dal dispositivo (§ 5.7): leggerla con Face ID dà la chiave, senza il PIN.
 struct BiometricLock: Sendable {
     let store: any SecureStore
     let authenticator: any BiometricAuthenticator
+    let passcode: PasscodeService
 
     func isEnabled() throws -> Bool {
         try store.data(for: .biometricEnabled) != nil
     }
 
-    /// Crea il token e chiede subito la biometria: se l'utente annulla, resta tutto disattivato.
-    func enable(reason: String) async throws {
-        try await authenticator.createUnlockToken()
-        guard try await authenticator.readUnlockToken(reason: reason) == .valid else {
+    /// Salva la chiave e chiede subito la biometria: se l'utente annulla, resta tutto disattivato.
+    func enable(key: DatabaseKey, reason: String) async throws {
+        try await authenticator.storeUnlockSecret(passcode.biometricSecret(for: key))
+        guard case .secret(let secret) = try await authenticator.readUnlockSecret(reason: reason),
+              try passcode.key(fromBiometricSecret: secret) == key else {
             throw BiometricError.unavailable
         }
         try store.set(Data([1]), for: .biometricEnabled)
+        try store.set(Data([1]), for: .biometricHoldsDatabaseKey)
     }
 
     func disable() throws {
-        try authenticator.removeUnlockToken()
+        try authenticator.removeUnlockSecret()
         try store.remove(.biometricEnabled)
+        try store.remove(.biometricHoldsDatabaseKey)
+    }
+
+    /// Chi aveva attivato la biometria prima della cifratura ha nella voce un token casuale: al primo
+    /// sblocco con il PIN lo si sostituisce con la chiave, senza chiedere la biometria (§ 5.7).
+    func replaceLegacyToken(with key: DatabaseKey) async throws {
+        guard try isEnabled(), try store.data(for: .biometricHoldsDatabaseKey) == nil else { return }
+        try await authenticator.storeUnlockSecret(passcode.biometricSecret(for: key))
+        try store.set(Data([1]), for: .biometricHoldsDatabaseKey)
     }
 
     func unlock(reason: String) async throws -> BiometricUnlockResult {
         guard try isEnabled() else { return .notEnabled }
         guard authenticator.availableBiometry() != .unavailable else { return .unavailable }
-        guard try await authenticator.readUnlockToken(reason: reason) == .valid else {
+        guard case .secret(let secret) = try await authenticator.readUnlockSecret(reason: reason) else {
             try disable()
             return .biometryChanged
         }
-        return .success
+        return .success(key: try passcode.key(fromBiometricSecret: secret))
     }
 }
