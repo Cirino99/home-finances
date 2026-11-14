@@ -4,8 +4,9 @@
 
 > Documento base per lo sviluppo. Raccoglie le decisioni prese su piattaforme, stack, sicurezza, modello dati, navigazione e schermate.
 > Le voci marcate **[DA CONFERMARE]** sono proposte non ancora approvate.
-> Versione 1.16 — 7 novembre 2026
+> Versione 1.17 — 14 novembre 2026
 > **Modifiche:**
+> - 1.17 — decisa la cifratura del database con SQLCipher, ora in sviluppo (§ 5.7), tolta dagli sviluppi futuri (§ 13). Seconda dipendenza esterna (§ 3). Piano in [PIANO-CIFRATURA.md](PIANO-CIFRATURA.md).
 > - 1.16 — trasferimenti tra conti e tab Conti, tolti dagli sviluppi futuri (§ 13). Nuova tabella `transfer` con la migrazione `v2` (§ 6.2), saldi dei conti (§ 6.4), tab Conti (§ 7, § 8.7), editor e dettaglio del trasferimento (§ 8.8), Storico con trasferimenti e filtro per conto (§ 8.3), export e CSV (§ 10). Piano e decisioni in [PIANO-CONTI-TRASFERIMENTI.md](PIANO-CONTI-TRASFERIMENTI.md).
 > - 1.15 — le specifiche si spostano da `README.md` a `docs/SPECIFICHE.md`; il README presenta il progetto.
 > - 1.14 — decise: PIN dimenticato con dati presenti non recuperabile; backup di sistema a scelta dell'utente, inclusi di default (§ 5.5).
@@ -32,7 +33,7 @@ App nativa per la gestione delle finanze personali. Registra entrate, uscite e t
 Principi guida:
 
 - **Solo locale.** Nessun server, nessun account, nessun dato in rete.
-- **Accesso protetto.** I dati sono visibili solo dopo lo sblocco con PIN o Face ID / Touch ID. La cifratura del file è rimandata (§ 13), ma il codice è predisposto per aggiungerla (§ 5.6).
+- **Accesso protetto.** I dati sono visibili solo dopo lo sblocco con PIN o Face ID / Touch ID. La cifratura del file con SQLCipher è in sviluppo (§ 5.7).
 - **Un solo codice** per iPhone, iPad e Mac, conforme alle Human Interface Guidelines (HIG) Apple per il multipiattaforma.
 
 ---
@@ -68,9 +69,9 @@ Principi guida:
 ### Esclusioni motivate
 
 - **SwiftData / Core Data:**
-  - non offrono la cifratura del database, che resta un obiettivo futuro;
+  - non offrono la cifratura del database, che qui serve (§ 5.7);
   - SwiftData non calcola somme e aggregati direttamente in SQL, che sono il cuore di Home e Storico.
-- **Dipendenze di terze parti:** solo GRDB. Tutto il resto viene dai framework Apple.
+- **Dipendenze di terze parti:** GRDB e, con la cifratura (§ 5.7), SQLCipher. Tutto il resto viene dai framework Apple.
 
 ### Alternative valutate e scartate
 
@@ -130,7 +131,7 @@ Pattern:
 ### 5.1 Requisito (v1)
 
 - L'accesso ai dati è protetto da **PIN** o **Face ID / Touch ID**.
-- **La cifratura del database è rimandata** (§ 13). In v1 l'app non cifra il file SQLite. Su disco valgono le protezioni di sistema:
+- **La cifratura del database è in sviluppo** (§ 5.7). Finché non c'è, l'app non cifra il file SQLite. Su disco valgono le protezioni di sistema:
   - Data Protection di iOS/iPadOS, con la classe di default;
   - FileVault su macOS, se attivo.
 
@@ -157,18 +158,19 @@ Pattern:
 - **PIN dimenticato:** se il database non contiene dati, si può reimpostare il PIN dopo il codice del dispositivo. Serve perché su iPhone il Keychain sopravvive alla disinstallazione. Con dati presenti non c'è modo di reimpostarlo: è una scelta, perché chi conosce il codice del dispositivo non deve poter entrare nell'app.
 - **Nessuna cancellazione automatica dei dati** dopo N tentativi in v1.
 - Il tentativo viene contato **prima** del calcolo dell'hash: chiudere l'app durante la verifica non lo annulla.
+- Con la cifratura il PIN apre la chiave del database invece di confrontare un hash (§ 5.7).
 
 ### 5.3 Biometria
 
 - Opzionale. Si attiva dopo l'impostazione del PIN, con una proposta al primo avvio e un interruttore nelle Impostazioni.
 - Sblocco con `LAContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, ...)`.
-- Lo sblocco legge un token dal Keychain protetto con `.biometryCurrentSet`, invece di fidarsi del solo esito di `evaluatePolicy`: decide il Secure Enclave, e lo stesso meccanismo potrà custodire la chiave di cifratura (§ 5.6).
+- Lo sblocco legge un token dal Keychain protetto con `.biometryCurrentSet`, invece di fidarsi del solo esito di `evaluatePolicy`: decide il Secure Enclave, e con la cifratura la stessa voce custodirà la chiave del database (§ 5.7).
 - **Cambio delle impronte o dei volti registrati:** il sistema cancella il token; la biometria viene disattivata e l'app chiede il PIN, poi propone di riattivarla.
 - In Info.plist: `NSFaceIDUsageDescription` = "Usa Face ID per sbloccare i tuoi dati finanziari."
 
 ### 5.4 Ciclo di vita del blocco
 
-Il database resta aperto per tutta la sessione. Il blocco agisce sulla **UI**: finché l'app non è sbloccata, nessuna schermata con dati viene mostrata.
+Il database resta aperto per tutta la sessione; con la cifratura si chiuderà al blocco (§ 5.7). Il blocco agisce sulla **UI**: finché l'app non è sbloccata, nessuna schermata con dati viene mostrata.
 
 | Evento | Azione |
 |---|---|
@@ -184,11 +186,12 @@ Il database resta aperto per tutta la sessione. Il blocco agisce sulla **UI**: f
 
 - **Posizione del file:** `Application Support/<bundle-id>/homefinances.sqlite`, con WAL attivo (`DatabasePool`).
 - **iOS/iPadOS:** classe Data Protection di default (`completeUntilFirstUserAuthentication`).
-- **Backup di sistema** (iCloud/Finder su iOS, Time Machine su Mac): il database è incluso di default, e l'utente può escluderlo nelle Impostazioni. L'esclusione vale per l'intera cartella del database, comprese le copie di sicurezza, e non tocca i backup già fatti. L'app non cifra i dati: la protezione dipende da quella dei backup.
+- **Backup di sistema** (iCloud/Finder su iOS, Time Machine su Mac): il database è incluso di default, e l'utente può escluderlo nelle Impostazioni. L'esclusione vale per l'intera cartella del database, comprese le copie di sicurezza, e non tocca i backup già fatti. L'app non cifra i dati: la protezione dipende da quella dei backup. Con la cifratura il file nei backup sarà cifrato (§ 5.7).
 - **Ripristino su un nuovo dispositivo:**
   - l'hash del PIN è `ThisDeviceOnly` e quindi non viene ripristinato;
   - se l'app trova un database ma nessun PIN, chiede di autenticarsi con il codice del dispositivo (`.deviceOwnerAuthentication`), poi fa impostare un nuovo PIN.
-- **Export compliance App Store:** l'app usa crittografia per l'hash del PIN e per cifrare i file di export con password (AES-GCM di CryptoKit). `ITSAppUsesNonExemptEncryption` è impostato a `NO`, ma con la cifratura dei file **va ricontrollato al momento della pubblicazione**, secondo le regole di Apple sull'esportazione.
+  - con la cifratura questo ripristino non sarà più possibile su un altro dispositivo (§ 5.7).
+- **Export compliance App Store:** l'app usa crittografia per l'hash del PIN e per cifrare i file di export con password (AES-GCM di CryptoKit), e con la cifratura anche per il database (SQLCipher) e per la sua chiave. `ITSAppUsesNonExemptEncryption` è impostato a `NO`, ma con la cifratura dei file **va ricontrollato al momento della pubblicazione**, secondo le regole di Apple sull'esportazione.
 
 ### 5.6 Predisposizione per la cifratura futura
 
@@ -205,6 +208,24 @@ Per aggiungere SQLCipher in seguito senza riscrivere nulla:
 
   Lo schema non cambia.
 - **Il PIN potrà diventare la base della chiave**, con la gerarchia di chiavi della versione 1.0 di questo documento. Al primo sblocco dopo l'aggiornamento si migra dall'hash al wrapping della chiave.
+
+### 5.7 Cifratura del database (in sviluppo)
+
+Decisa il 14 novembre 2026. Piano, motivazioni e step in [PIANO-CIFRATURA.md](PIANO-CIFRATURA.md). Finché non è completata valgono i § 5.1–5.5; dove cambia qualcosa, lo indicano con un rimando qui.
+
+- **SQLCipher** cifra l'intero file del database, con GRDB collegato a SQLCipher invece che al SQLite di sistema. Il modo di integrarlo con Swift Package Manager si sceglie con una prova tecnica (piano, § 3.1).
+- **Gerarchia delle chiavi:**
+  - una **chiave del database** casuale da 256 bit, generata una volta e mai cambiata in v1;
+  - avvolta con AES-256-GCM da una chiave derivata dal **PIN** (PBKDF2-HMAC-SHA256, ≥ 600.000 iterazioni, salt casuale), e poi da una chiave P-256 del **Secure Enclave**, che non lascia il dispositivo: un PIN di 6 cifre non si può provare fuori dal dispositivo;
+  - una copia per la **biometria**, in una voce del Keychain con `.biometryCurrentSet`, al posto del token di oggi;
+  - tutte le voci sono `ThisDeviceOnly`.
+- **SQLCipher riceve la chiave grezza** (`PRAGMA key = "x'…'"`), senza la sua derivazione da password.
+- **PIN:** la verifica è l'apertura AES-GCM della chiave, e l'hash del § 5.2 non serve più. Tentativi e attese restano quelli del § 5.2. Cambiare il PIN riavvolge la stessa chiave, senza ricifrare il database.
+- **Ciclo di vita:** il database si apre solo dopo lo sblocco. Al blocco si chiude e la chiave viene cancellata dalla memoria (cambia il § 5.4).
+- **Dati presenti, da bloccati:** si capiscono dall'esistenza del file e della chiave avvolta nel Keychain, senza aprire il database.
+- **Ripristino su un altro dispositivo:** non è supportato, perché la chiave non lascia il dispositivo (cambia il § 5.5). Se l'app trova un database cifrato senza chiave, lo spiega e offre di importare un file `.homefinances` oppure di ricominciare da zero, dopo il codice del dispositivo e una conferma esplicita.
+- **Migrazione dei dati esistenti:** al primo sblocco con il PIN dopo l'aggiornamento, con i passi del § 5.6, ripartibili se l'app si chiude a metà. Si cifrano anche le copie "prima-import". Il file in chiaro si cancella per ultimo.
+- **Export e import** (§ 10): il formato `.homefinances` non cambia. L'export passa da `sqlcipher_export` a un file in chiaro temporaneo, poi alla password facoltativa come oggi. L'import cifra il file con la chiave del dispositivo prima della sostituzione. Le copie "prima-import" sono cifrate.
 
 ---
 
@@ -620,6 +641,8 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 
 ### 10.3 Export
 
+Con la cifratura (§ 5.7) la copia passa da `sqlcipher_export` verso un file in chiaro temporaneo; il resto non cambia.
+
 - **Punti di accesso:**
   - Impostazioni › Dati › **Esporta database**;
   - su Mac anche **File › Esporta database…** (⇧⌘E).
@@ -634,6 +657,8 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 - Dopo l'export, il file temporaneo viene cancellato.
 
 ### 10.4 Import
+
+Con la cifratura (§ 5.7) il file controllato viene cifrato con la chiave del dispositivo prima della sostituzione, e le copie di sicurezza sono cifrate.
 
 - **Punti di accesso:**
   - Impostazioni › Dati › **Importa database** (`fileImporter`, filtrato sul tipo `.homefinances`);
@@ -765,9 +790,7 @@ Dopo la v1: **conti e trasferimenti**, in 8 step, descritti in [PIANO-CONTI-TRAS
 
 ## 13. Fuori scope v1 (possibili evoluzioni)
 
-- **Cifratura del database con SQLCipher**, con la chiave protetta da PIN / biometria. Il codice è già predisposto (§ 5.6).
-  - Il punto critico è l'integrazione GRDB + SQLCipher con Swift Package Manager, che richiede una build personalizzata o un fork.
-  - Su Mac è l'unico modo per avere il file cifrato indipendentemente da FileVault.
+- Rotazione della chiave del database (ricifrare tutto con una chiave nuova), dopo la cifratura del § 5.7.
 - Sincronizzazione **automatica** tra dispositivi e unione (merge) di database diversi. In v1 la sincronizzazione è manuale (§ 10). Gli UUID e `updated_at` sono già predisposti.
 - Multi-valuta con conversione, compresi i trasferimenti tra conti con valute diverse.
 - Trasferimenti ricorrenti.
@@ -791,3 +814,4 @@ Dopo la v1: **conti e trasferimenti**, in 8 step, descritti in [PIANO-CONTI-TRAS
 | 6 | ~~Libreria di accesso dati~~ | **Decisa:** SQLite + GRDB diretto |
 | 7 | ~~Database incluso nel backup di sistema~~ | **Decisa:** a scelta dell'utente nelle Impostazioni, incluso di default |
 | 8 | ~~Trasferimenti tra conti e tab Conti~~ | **Decise** il 7 novembre 2026: le 10 scelte sono in [PIANO-CONTI-TRASFERIMENTI.md § 4](PIANO-CONTI-TRASFERIMENTI.md#4-decisioni) |
+| 9 | ~~Cifratura del database~~ | **Decisa** il 14 novembre 2026: SQLCipher, chiave protetta da PIN, Secure Enclave e biometria; le 6 scelte sono in [PIANO-CIFRATURA.md § 5](PIANO-CIFRATURA.md#5-decisioni) |
