@@ -55,6 +55,9 @@
     "Impostazioni…" : {
 
     },
+    "Inserisci il PIN" : {
+
+    },
     "Inserisci la password scelta quando il file è stato esportato." : {
 
     },
@@ -73,6 +76,9 @@
     "Password errata" : {
 
     },
+    "Per aprire i dati serve il PIN, almeno questa volta." : {
+
+    },
     "Riprova" : {
 
     },
@@ -80,6 +86,9 @@
 
     },
     "Storico" : {
+
+    },
+    "Usa il PIN" : {
 
     }
   },

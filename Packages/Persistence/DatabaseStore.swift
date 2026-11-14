@@ -8,21 +8,13 @@ import Observation
 @Observable
 public final class DatabaseStore: DataTransferring {
     public enum State {
+        /// Non ancora aperto, o chiuso al blocco: la chiave c'è solo ad app sbloccata (§ 5.7).
+        case closed
         case ready(AppDatabase)
         case failed(any Error)
-
-        /// Database con dati ma senza PIN significa ripristino da backup (§ 5.5). Se il database non si può
-        /// leggere si assume che i dati ci siano: è il caso più prudente, chiede il codice del dispositivo
-        /// e non permette di reimpostare il PIN.
-        public var hasExistingData: Bool {
-            switch self {
-            case .ready(let database): (try? database.isSeeded()) ?? true
-            case .failed: true
-            }
-        }
     }
 
-    public private(set) var state: State
+    public private(set) var state: State = .closed
     /// Cambia a ogni sostituzione del database: l'interfaccia si ricostruisce da zero.
     public private(set) var generation = 0
     public private(set) var hasBackup = false
@@ -35,8 +27,10 @@ public final class DatabaseStore: DataTransferring {
     private let deviceName: String
     private let temporaryDirectory: URL
     private let now: () -> Date
-    private let opener: (URL) throws -> AppDatabase
+    private let opener: (URL, String?) throws -> AppDatabase
     private let passwordIterations: UInt32
+    /// Chiave con cui il database è aperto, o si è provato ad aprirlo; si cancella alla chiusura.
+    private var encryptionKey: String?
 
     /// `opener` e `passwordIterations` si possono sostituire nei test: per simulare un errore
     /// durante la sostituzione, e per non calcolare ogni volta una chiave lenta.
@@ -46,16 +40,14 @@ public final class DatabaseStore: DataTransferring {
         temporaryDirectory: URL = FileManager.default.temporaryDirectory.appending(path: "HomeFinancesTransfer"),
         now: @escaping () -> Date = { Date() },
         passwordIterations: UInt32 = EncryptedDatabaseFile.defaultIterations,
-        opener: ((URL) throws -> AppDatabase)? = nil
+        opener: ((URL, String?) throws -> AppDatabase)? = nil
     ) {
         self.url = url
         self.deviceName = deviceName
         self.temporaryDirectory = temporaryDirectory
         self.now = now
         self.passwordIterations = passwordIterations
-        let opener = opener ?? { try AppDatabase.open(at: $0, deviceName: deviceName) }
-        self.opener = opener
-        state = Self.open(url: url, opener: opener)
+        self.opener = opener ?? { try AppDatabase.open(at: $0, deviceName: deviceName, encryptionKey: $1) }
         // I file di dati non cifrati non devono sopravvivere a una chiusura inattesa dell'app.
         try? FileManager.default.removeItem(at: temporaryDirectory)
         hasBackup = !existingBackups().isEmpty
@@ -83,18 +75,75 @@ public final class DatabaseStore: DataTransferring {
         self.init(url: try? AppDatabase.defaultURL(bundleIdentifier: bundleIdentifier), deviceName: deviceName)
     }
 
+    // MARK: Apertura e chiusura
+
+    /// Apre il database dopo lo sblocco (§ 5.7). Un database nuovo nasce cifrato con `encryptionKey`.
+    ///
+    /// Un database in chiaro di prima della cifratura si apre ancora senza chiave, finché la migrazione
+    /// non lo cifra (piano della cifratura, step 4). Uno cifrato senza chiave non si apre: `keyRequired`.
+    public func open(encryptionKey: String?) {
+        if case .ready = state { return }
+        self.encryptionKey = encryptionKey
+        state = openState()
+    }
+
+    /// Al blocco (§ 5.7): chiude le connessioni e dimentica la chiave. Riaprire richiede di nuovo lo sblocco.
+    public func close() {
+        if case .ready(let database) = state {
+            try? database.close()
+        }
+        state = .closed
+        encryptionKey = nil
+    }
+
     /// Riprova se l'apertura era fallita: subito dopo un riavvio iOS può avviare l'app
-    /// quando il file non è ancora accessibile.
+    /// quando il file non è ancora accessibile. Usa la chiave dell'ultimo tentativo.
     public func retryIfNeeded() {
         if case .failed = state {
-            state = Self.open(url: url, opener: opener)
+            state = openState()
         }
     }
 
-    private static func open(url: URL?, opener: (URL) throws -> AppDatabase) -> State {
+    /// Ci sono dati da proteggere? Serve ad app bloccata, senza la chiave (§ 5.7): decide se il PIN
+    /// dimenticato si può reimpostare e se si tratta di un ripristino (§ 5.2, § 5.5).
+    ///
+    /// - nessun file: no;
+    /// - file in chiaro: lo si legge, e se non si riesce si assume di sì;
+    /// - file cifrato: sì se i dati iniziali sono stati inseriti, cosa che lascia un segno accanto al file.
+    ///   Senza il segno è un database creato all'onboarding e mai usato.
+    public var hasExistingData: Bool {
+        guard let url else { return true }
+        switch AppDatabase.fileFormat(at: url) {
+        case .missing: return false
+        case .plaintext: return AppDatabase.plaintextFileIsSeeded(at: url)
+        case .encrypted: return FileManager.default.fileExists(atPath: seededMarkerURL(for: url).path)
+        }
+    }
+
+    /// Da chiamare dopo l'inserimento dei dati iniziali: lascia il segno letto da `hasExistingData`.
+    public func markSeeded() {
+        guard let url else { return }
+        FileManager.default.createFile(atPath: seededMarkerURL(for: url).path, contents: Data())
+    }
+
+    private func seededMarkerURL(for url: URL) -> URL {
+        URL(filePath: url.path + ".seeded")
+    }
+
+    private func openState() -> State {
         guard let url else { return .failed(DataTransferError.databaseUnavailable) }
+        let key: String?
+        switch AppDatabase.fileFormat(at: url) {
+        case .plaintext:
+            key = nil
+        case .encrypted:
+            guard let encryptionKey else { return .failed(PersistenceError.keyRequired) }
+            key = encryptionKey
+        case .missing:
+            key = encryptionKey
+        }
         do {
-            return .ready(try opener(url))
+            return .ready(try opener(url, key))
         } catch {
             return .failed(error)
         }
@@ -238,10 +287,18 @@ public final class DatabaseStore: DataTransferring {
         guard let url else { throw DataTransferError.databaseUnavailable }
         try database.close()
         try swapDatabaseFile(at: url, with: file)
-        let reopened = try opener(url)
+        let reopened = try opener(url, openingKey(for: url))
         state = .ready(reopened)
+        if (try? reopened.isSeeded()) == true {
+            markSeeded()
+        }
         generation += 1
         return try await reopened.summary().movementCount
+    }
+
+    /// La chiave per il file messo al posto del database: nessuna se è in chiaro.
+    private func openingKey(for url: URL) -> String? {
+        AppDatabase.fileFormat(at: url) == .plaintext ? nil : encryptionKey
     }
 
     /// La copia si fa nella stessa cartella del database: solo così la sostituzione è atomica.
@@ -265,7 +322,7 @@ public final class DatabaseStore: DataTransferring {
         guard let url else { return }
         do {
             try swapDatabaseFile(at: url, with: backup)
-            state = .ready(try opener(url))
+            state = .ready(try opener(url, openingKey(for: url)))
         } catch {
             state = .failed(error)
         }

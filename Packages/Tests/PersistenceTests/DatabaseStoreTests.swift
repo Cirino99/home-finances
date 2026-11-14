@@ -22,7 +22,7 @@ final class DatabaseStoreTests {
     func makeStore(
         _ name: String,
         operations: Int = 0,
-        opener: ((URL) throws -> AppDatabase)? = nil
+        opener: ((URL, String?) throws -> AppDatabase)? = nil
     ) async throws -> DatabaseStore {
         let store = DatabaseStore(
             url: databaseURL(name),
@@ -31,6 +31,8 @@ final class DatabaseStoreTests {
             passwordIterations: 1000,
             opener: opener
         )
+        // In chiaro: export e import di un database cifrato arrivano con lo step 5 del piano della cifratura.
+        store.open(encryptionKey: nil)
         let database = try currentDatabase(of: store)
         try await database.seedIfNeeded(currency: "EUR")
         for index in 0..<operations {
@@ -463,13 +465,13 @@ final class DatabaseStoreTests {
         let source = try await makeStore("source", operations: 3)
         let opens = OpenCounter()
         let url = databaseURL("target")
-        let target = try await makeStore("target", operations: 1) { fileURL in
+        let target = try await makeStore("target", operations: 1) { fileURL, key in
             opens.count += 1
             // La riapertura dopo la sostituzione fallisce; quella dopo il ripristino riesce.
             if opens.count == 2 {
                 throw DataTransferError.databaseUnavailable
             }
-            return try AppDatabase.open(at: fileURL, deviceName: "Test")
+            return try AppDatabase.open(at: fileURL, deviceName: "Test", encryptionKey: key)
         }
         let preview = try await target.prepareImport(from: try await source.exportDatabase())
 
@@ -578,24 +580,29 @@ final class DatabaseStoreTests {
             url: databaseURL("retry"),
             deviceName: "Test",
             temporaryDirectory: root.appending(path: "tmp-retry"),
-            opener: { url in
+            opener: { url, key in
                 opens.count += 1
                 if opens.count == 1 {
                     throw DataTransferError.databaseUnavailable
                 }
-                return try AppDatabase.open(at: url)
+                return try AppDatabase.open(at: url, encryptionKey: key)
             }
         )
+        guard case .closed = store.state else {
+            Issue.record("Lo store non apre nulla prima dello sblocco")
+            return
+        }
+        store.open(encryptionKey: nil)
         guard case .failed = store.state else {
             Issue.record("La prima apertura doveva fallire")
             return
         }
-        #expect(store.state.hasExistingData, "Database illeggibile: si assume che i dati ci siano")
+        #expect(!store.hasExistingData, "Nessun file: nessun dato")
 
         store.retryIfNeeded()
 
         #expect(try currentDatabase(of: store).sqliteVersion().isEmpty == false)
-        #expect(!store.state.hasExistingData)
+        #expect(!store.hasExistingData, "Database nuovo, senza i dati iniziali")
     }
 }
 

@@ -43,19 +43,47 @@ struct AppRoot: View {
         appLock.reload()
     }
 
-    @ViewBuilder
+    /// Il database si apre solo ad app sbloccata, con la chiave che lo sblocco ha dato (§ 5.7).
     private var content: some View {
-        switch store.state {
-        case .ready(let database):
-            LockGate(appLock: appLock) {
-                SeededContent(database: database, store: store, appLock: appLock, router: router)
-                    // Dopo un import si riparte da zero: niente di ciò che era a schermo è più valido.
-                    .id(store.generation)
+        LockGate(appLock: appLock) {
+            UnlockedContent(store: store, appLock: appLock, router: router)
+        }
+        .onChange(of: appLock.phase) { _, phase in
+            if phase != .unlocked {
+                router.dismissPresentations()
+                // Il contenuto è già stato tolto da `LockGate`: si chiude il database e si dimentica la chiave.
+                store.close()
             }
-            .onChange(of: appLock.phase) { _, phase in
-                if phase != .unlocked {
-                    router.dismissPresentations()
+        }
+    }
+}
+
+/// Apre il database con la chiave dello sblocco e mostra il contenuto, o perché non si apre.
+private struct UnlockedContent: View {
+    let store: DatabaseStore
+    let appLock: AppLock
+    let router: AppRouter
+
+    var body: some View {
+        switch store.state {
+        case .closed:
+            ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .task {
+                    store.open(encryptionKey: appLock.databaseKey?.sqlCipherKey)
                 }
+        case .ready(let database):
+            SeededContent(database: database, store: store, appLock: appLock, router: router)
+                // Dopo un import si riparte da zero: niente di ciò che era a schermo è più valido.
+                .id(store.generation)
+        case .failed(let error as PersistenceError) where error == .keyRequired:
+            // Sbloccata con il vecchio token di Face ID, che non contiene la chiave: serve il PIN.
+            ContentUnavailableView {
+                Label("Inserisci il PIN", systemImage: "lock.fill")
+            } description: {
+                Text("Per aprire i dati serve il PIN, almeno questa volta.")
+            } actions: {
+                Button("Usa il PIN") { appLock.lock() }
             }
         case .failed(let error):
             ContentUnavailableView {
@@ -63,7 +91,10 @@ struct AppRoot: View {
             } description: {
                 Text(error.localizedDescription)
             } actions: {
-                Button("Riprova", action: retryDatabase)
+                Button("Riprova") {
+                    store.retryIfNeeded()
+                    appLock.reload()
+                }
             }
         }
     }
@@ -145,6 +176,8 @@ private struct SeededContent: View {
         } else {
             CurrencySetupView { currency in
                 try await database.seedIfNeeded(currency: currency)
+                // Da qui, con il database cifrato, "ci sono dati" anche ad app bloccata (§ 5.7).
+                store.markSeeded()
                 isSeeded = true
             }
         }

@@ -23,18 +23,54 @@ public final class AppDatabase: Sendable {
     }
 
     /// Apre (o crea) il database su file, in modalità WAL tramite `DatabasePool`.
+    ///
+    /// Con `encryptionKey` il file è cifrato con SQLCipher (§ 5.7): la chiave è quella grezza, nel formato `x'…'`.
+    /// Senza, il file è in chiaro: database di prima della cifratura, e test.
     public static func open(
         at url: URL,
         configuration: Configuration = Configuration(),
         deviceName: String = "",
+        encryptionKey: String? = nil,
         now: @escaping @Sendable () -> Date = { Date() }
     ) throws -> AppDatabase {
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
+        var configuration = configuration
+        if let encryptionKey {
+            configuration.prepareDatabase { db in
+                try db.usePassphrase(encryptionKey)
+                // Con il SQLite di sistema la chiave verrebbe ignorata senza errori: meglio fermarsi.
+                guard try String.fetchOne(db, sql: "PRAGMA cipher_version") != nil else {
+                    throw PersistenceError.encryptionUnavailable
+                }
+            }
+        }
         let pool = try DatabasePool(path: url.path, configuration: configuration)
         return try AppDatabase(writer: pool, deviceName: deviceName, now: now)
+    }
+
+    /// Com'è il file, senza aprirlo: un database in chiaro inizia con l'intestazione di SQLite,
+    /// uno cifrato da SQLCipher no.
+    public static func fileFormat(at url: URL) -> DatabaseFileFormat {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return .missing }
+        defer { try? handle.close() }
+        let header = (try? handle.read(upToCount: sqliteHeader.count)) ?? Data()
+        if header.isEmpty { return .missing }
+        return header == sqliteHeader ? .plaintext : .encrypted
+    }
+
+    private static let sqliteHeader = Data("SQLite format 3\0".utf8)
+
+    /// `true` se il file in chiaro contiene i dati iniziali; lo legge senza tenerlo aperto.
+    /// Se non si riesce a leggerlo si assume di sì: è il caso più prudente (§ 5.5).
+    static func plaintextFileIsSeeded(at url: URL) -> Bool {
+        var configuration = Configuration()
+        configuration.readonly = true
+        guard let queue = try? DatabaseQueue(path: url.path, configuration: configuration) else { return true }
+        defer { try? queue.close() }
+        return (try? queue.read { try hasSeedData($0) }) ?? true
     }
 
     /// Database in memoria, per test e anteprime.
@@ -284,6 +320,18 @@ public final class AppDatabase: Sendable {
 public enum PersistenceError: Error, Equatable {
     case invalidCurrency(String)
     case corruptedValue(column: String)
+    /// GRDB non è collegato a SQLCipher: il database non sarebbe cifrato.
+    case encryptionUnavailable
+    /// Il database è cifrato e manca la chiave: serve sbloccare con il PIN.
+    case keyRequired
+}
+
+/// Com'è il file del database, visto senza aprirlo.
+public enum DatabaseFileFormat: Equatable, Sendable {
+    case missing
+    /// Di prima della cifratura (§ 5.7), o di un test.
+    case plaintext
+    case encrypted
 }
 
 enum MetadataKey {

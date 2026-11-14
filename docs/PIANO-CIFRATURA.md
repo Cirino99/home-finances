@@ -194,7 +194,19 @@ Ogni step si chiude con il codice che compila e i test che passano. Compilazione
 - ripristino di un backup su un altro dispositivo: messaggio e strade del § 3.5;
 - export da iPhone e import su Mac.
 
-### 4.3 Rischi
+### 4.3 Note di sviluppo
+
+- **Step 1:** fork ufficiale `sqlcipher/GRDB.swift` (§ 3.1).
+- **Step 2:** la chiave nasce con il PIN dell'onboarding, oppure, per chi ha già un PIN, al primo sblocco con il PIN, che sostituisce l'hash; nello stesso momento il token di Face ID diventa la copia della chiave. Fino ad allora Face ID sblocca, ma senza dare la chiave. Se manca la chiave del dispositivo è un errore, non un PIN sbagliato, e non consuma tentativi. Dove manca il Secure Enclave (simulatore) il livello del dispositivo usa una chiave software nel Keychain, `ThisDeviceOnly`.
+- **Step 3:**
+  - lo store nasce chiuso e si apre allo sblocco con la chiave; al blocco si chiude e la dimentica;
+  - un database nuovo nasce cifrato; uno **in chiaro** di prima della cifratura si apre ancora senza chiave, così lo step 3 non rompe le installazioni esistenti. Lo step 4 sostituisce questo passaggio con la migrazione;
+  - un database cifrato e una sessione senza chiave (Face ID con il vecchio token) chiedono il PIN;
+  - "ci sono dati?" senza aprire il database (§ 3.6): nessun file, no; file in chiaro, lo si legge; file cifrato, sì se accanto c'è il segno `homefinances.sqlite.seeded`, lasciato dall'inserimento dei dati iniziali e dall'import;
+  - fino allo step 5 export, import e copie di sicurezza funzionano solo con il database in chiaro: con quello cifrato l'export fallisce con un errore e l'import si ferma prima di toccare i dati;
+  - la chiave resta in memoria finché l'`AppDatabase` chiuso non viene rilasciato: Swift non garantisce di poterla azzerare.
+
+### 4.4 Rischi
 
 | Rischio | Effetto | Contromisura |
 |---|---|---|

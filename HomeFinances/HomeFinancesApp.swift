@@ -19,7 +19,7 @@ struct HomeFinancesApp: App {
         _appLock = State(initialValue: AppLock(
             store: KeychainStore(service: "\(bundleID).security"),
             authenticator: SystemBiometricAuthenticator(service: "\(bundleID).security"),
-            hasExistingData: { store.state.hasExistingData }
+            hasExistingData: { store.hasExistingData }
         ))
     }
 
