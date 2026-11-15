@@ -48,7 +48,7 @@ public struct SettingsView: View {
                 } footer: {
                     Text(
                         isIncludedInSystemBackup
-                            ? "I dati finiscono nei backup di iCloud, del Mac e di Time Machine, così non si perdono cambiando dispositivo. L'app non li cifra: la protezione dipende da quella dei backup."
+                            ? "I dati finiscono cifrati nei backup di iCloud, del Mac e di Time Machine. La chiave resta su questo dispositivo: un backup ripristinato su un altro non si apre. Per spostare i dati su un altro dispositivo, esporta un file."
                             : "I dati non finiscono nei prossimi backup: se perdi il dispositivo li perdi, salvo aver esportato un file. I backup già fatti non cambiano."
                     )
                 }
@@ -57,6 +57,7 @@ public struct SettingsView: View {
                 }
                 Section("Informazioni") {
                     LabeledContent("Versione", value: appVersion)
+                    NavigationLink("Licenze") { LicensesView() }
                     Text("I tuoi dati non lasciano mai questo dispositivo.")
                         .foregroundStyle(.secondary)
                 }

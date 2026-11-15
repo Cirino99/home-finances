@@ -1,6 +1,7 @@
 # Piano di sviluppo — Cifratura del database
 
 > Evoluzione prevista dal § 13 delle [specifiche](SPECIFICHE.md); i rimandi `§` puntano lì.
+> Versione 1.1 — 15 novembre 2026: step 0–7 completati. Restano le prove manuali (§ 4.6) e i controlli prima della pubblicazione (§ 4.5).
 > Versione 1.0 — 14 novembre 2026: tutte le decisioni del § 5 sono confermate. L'integrazione esatta di SQLCipher (§ 3.1) si sceglie allo step 1.
 
 ---
@@ -224,6 +225,12 @@ Ogni step si chiude con il codice che compila e i test che passano. Compilazione
   - `DatabaseStore.eraseAllData()` cancella database, file di SQLite, segni accanto, copie di sicurezza e copie preparate; `AppLock` la riceve come `eraseData`;
   - **errore della migrazione:** avviso dopo lo sblocco, una volta per apertura;
   - **biometria cambiata:** nessun cambiamento: dopo lo sblocco con il PIN la chiave c'è, e "Riattiva" crea la nuova copia.
+- **Step 7:**
+  - **licenze:** SQLCipher (BSD) chiede di riportare l'avviso di copyright anche nella versione compilata, GRDB (MIT) in tutte le copie. Testi originali in Impostazioni › Informazioni › Licenze (`SettingsFeature/LicensesView.swift`), presi dai pacchetti alle versioni in uso: vanno ricontrollati a ogni aggiornamento;
+  - **prestazioni:** un test misura migrazione, riapertura ed export di 12.000 operazioni, con limiti larghi (30 s, 2 s, 10 s) che segnalano solo un peggioramento evidente. I tempi sono nel log dei test. La misura sul dispositivo vero è una prova manuale (§ 4.6);
+  - **Impostazioni:** il testo sui backup di sistema diceva che l'app non cifra i dati; ora dice che la chiave resta sul dispositivo e che per spostare i dati serve l'export;
+  - **Mac:** Keychain con `kSecUseDataProtectionKeychain` e gruppo dell'app negli entitlements, come prima. Il Secure Enclave c'è sui Mac con Apple silicon o chip T2; sugli altri la chiave del dispositivo è software, nel Keychain (README, "Limiti da conoscere"). Da provare a mano (§ 4.6);
+  - **documentazione:** specifiche alla 1.18, con i § 5.1–5.5 riscritti per la cifratura, e README con i nuovi limiti.
 
 ### 4.4 Rischi
 
@@ -234,7 +241,52 @@ Ogni step si chiude con il codice che compila e i test che passano. Compilazione
 | Migrazione interrotta | Dati persi o doppi | Passi ripartibili; il file in chiaro si cancella per ultimo |
 | Chiave persa (Keychain azzerato, dispositivo ripristinato) | Dati illeggibili | È il comportamento voluto; l'export resta il backup portabile, e l'app deve dirlo |
 | Prestazioni | Avvio e sblocco più lenti | Chiave grezza, nessuna derivazione di SQLCipher; misure allo step 7 |
-| Export compliance | Pubblicazione bloccata o dichiarazione errata | Da ricontrollare prima della pubblicazione (§ 5.5); non è una valutazione legale |
+| Export compliance | Pubblicazione bloccata o dichiarazione errata | Da ricontrollare prima della pubblicazione (§ 4.5); non è una valutazione legale |
+
+### 4.5 Prima della pubblicazione
+
+- **Export compliance.** Oggi `ITSAppUsesNonExemptEncryption` è `NO` nelle impostazioni di build. Con la cifratura l'app usa: SQLCipher (AES-256) per il database, AES-GCM e PBKDF2 di CryptoKit e CommonCrypto per la chiave e per i file esportati con password, ECIES con il Secure Enclave. Tutti algoritmi standard, usati solo per proteggere i dati dell'utente sul suo dispositivo. Prima di pubblicare:
+  - rileggere le regole attuali di Apple sull'esportazione e il questionario di App Store Connect;
+  - decidere se la cifratura rientra in un'esenzione o se serve la documentazione (per esempio l'autoclassificazione annuale per gli Stati Uniti, o la dichiarazione per la Francia);
+  - di conseguenza confermare `NO` o passare a `YES` con la documentazione richiesta.
+
+  Questa nota non è una valutazione legale: in caso di dubbio serve un parere esperto.
+- **Licenze:** testi aggiornati alle versioni in uso di SQLCipher e GRDB (Impostazioni › Licenze).
+- **Prove manuali** del § 4.6 completate su iPhone e su Mac, con una build Release.
+
+### 4.6 Prove manuali
+
+Da fare con build Debug e, prima della pubblicazione, Release, su un iPhone vero e su un Mac: il simulatore non ha il Secure Enclave né il controllo della firma dei framework.
+
+**Aggiornamento e migrazione**
+- [ ] Prima: esporta un file `.homefinances` di sicurezza con la versione senza cifratura.
+- [ ] Aggiorna l'app con dati reali e sblocca con il PIN: i dati ci sono, `homefinances.sqlite` non inizia con `SQLite format 3` e in `Backups` non restano copie in chiaro.
+- [ ] Con Face ID attivo da prima: il primo sblocco dopo l'aggiornamento chiede il PIN, i successivi funzionano con Face ID.
+- [ ] Chiudi l'app a forza subito dopo lo sblocco, durante la migrazione: al prossimo sblocco i dati ci sono e il file è cifrato.
+
+**Sblocco e blocco**
+- [ ] Sblocco con PIN e con Face ID / Touch ID, poi blocco e riapertura, più volte di fila.
+- [ ] iPhone: passa a un'altra app e torna; Mac: blocco con ⌃⌘L e dopo l'inattività.
+- [ ] PIN errato: attese dopo 5 tentativi come prima; il PIN giusto funziona dopo l'attesa.
+- [ ] Cambio del PIN, poi sblocco con il nuovo PIN e con Face ID.
+- [ ] Cambio delle biometrie registrate: Face ID disattivato, sblocco con il PIN, proposta di riattivarlo, poi sblocco con Face ID.
+
+**Export e import**
+- [ ] Export con e senza password da iPhone, import su Mac e viceversa.
+- [ ] Import di un file esportato dalla versione senza cifratura.
+- [ ] "Annulla ultimo import" dopo un import.
+
+**Casi limite**
+- [ ] PIN dimenticato con dati: cancellazione dopo il codice del dispositivo, onboarding, app vuota; poi import di un file.
+- [ ] Ripristino di un backup su un altro dispositivo, o simulazione copiando la cartella del database su un altro Mac: "Dati di un altro dispositivo", poi "Ricomincia da zero".
+
+**Mac**
+- [ ] Mac con Apple silicon: onboarding, sblocco, riavvio del Mac e sblocco.
+- [ ] Se disponibile, un Mac Intel senza T2: la chiave software funziona.
+- [ ] La build Release parte (framework incorporato e firmato) e Impostazioni › Licenze mostra i testi.
+
+**Prestazioni**
+- [ ] Con molti dati (per esempio un import di un file grande): la migrazione non blocca l'interfaccia, lo sblocco resta immediato.
 
 ---
 

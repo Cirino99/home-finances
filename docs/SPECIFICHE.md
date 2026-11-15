@@ -6,7 +6,7 @@
 > Le voci marcate **[DA CONFERMARE]** sono proposte non ancora approvate.
 > Versione 1.18 — 15 novembre 2026
 > **Modifiche:**
-> - 1.18 — con la cifratura, il PIN dimenticato con dati presenti permette di cancellarli e ricominciare (§ 5.2, § 5.7). Dati di un altro dispositivo: si ricomincia da zero e poi si importa un file (§ 5.7).
+> - 1.18 — cifratura del database completata (§ 5.7): i § 5.1–5.5 descrivono ora il comportamento con la cifratura, il § 5.6 resta come storico. Licenze di terze parti nelle Impostazioni (§ 3, § 8.6). Con la cifratura, il PIN dimenticato con dati presenti permette di cancellarli e ricominciare (§ 5.2, § 5.7). Dati di un altro dispositivo: si ricomincia da zero e poi si importa un file (§ 5.7).
 > - 1.17 — decisa la cifratura del database con SQLCipher, ora in sviluppo (§ 5.7), tolta dagli sviluppi futuri (§ 13). Seconda dipendenza esterna (§ 3). Piano in [PIANO-CIFRATURA.md](PIANO-CIFRATURA.md).
 > - 1.16 — trasferimenti tra conti e tab Conti, tolti dagli sviluppi futuri (§ 13). Nuova tabella `transfer` con la migrazione `v2` (§ 6.2), saldi dei conti (§ 6.4), tab Conti (§ 7, § 8.7), editor e dettaglio del trasferimento (§ 8.8), Storico con trasferimenti e filtro per conto (§ 8.3), export e CSV (§ 10). Piano e decisioni in [PIANO-CONTI-TRASFERIMENTI.md](PIANO-CONTI-TRASFERIMENTI.md).
 > - 1.15 — le specifiche si spostano da `README.md` a `docs/SPECIFICHE.md`; il README presenta il progetto.
@@ -34,7 +34,7 @@ App nativa per la gestione delle finanze personali. Registra entrate, uscite e t
 Principi guida:
 
 - **Solo locale.** Nessun server, nessun account, nessun dato in rete.
-- **Accesso protetto.** I dati sono visibili solo dopo lo sblocco con PIN o Face ID / Touch ID. La cifratura del file con SQLCipher è in sviluppo (§ 5.7).
+- **Accesso protetto.** Il database è cifrato con SQLCipher e si apre solo dopo lo sblocco con PIN o Face ID / Touch ID (§ 5.7).
 - **Un solo codice** per iPhone, iPad e Mac, conforme alle Human Interface Guidelines (HIG) Apple per il multipiattaforma.
 
 ---
@@ -132,18 +132,18 @@ Pattern:
 ### 5.1 Requisito (v1)
 
 - L'accesso ai dati è protetto da **PIN** o **Face ID / Touch ID**.
-- **La cifratura del database è in sviluppo** (§ 5.7). Finché non c'è, l'app non cifra il file SQLite. Su disco valgono le protezioni di sistema:
+- **Il database è cifrato** con SQLCipher (§ 5.7), con la chiave protetta da PIN, Secure Enclave e biometria. In più valgono le protezioni di sistema:
   - Data Protection di iOS/iPadOS, con la classe di default;
   - FileVault su macOS, se attivo.
 
 ### 5.2 PIN
 
 - **6 cifre**, impostato obbligatoriamente al primo avvio. È il metodo di riserva sempre disponibile.
-- **Il PIN non viene mai salvato in chiaro.** Nel Keychain (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`) si salvano:
+- **Il PIN non viene mai salvato**, nemmeno come hash. Nel Keychain (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`) c'è la chiave del database avvolta da una chiave derivata dal PIN (§ 5.7), con:
   - salt casuale da 16 byte (`SecRandomCopyBytes`);
-  - hash PBKDF2-HMAC-SHA256, con almeno 600.000 iterazioni;
-  - il numero di iterazioni usato, così si potrà aumentarlo in futuro.
-- Verifica: si ricalcola l'hash del PIN inserito e lo si confronta in tempo costante.
+  - PBKDF2-HMAC-SHA256, con almeno 600.000 iterazioni;
+  - il numero di iterazioni usato, così si può aumentarlo in futuro.
+- Verifica: è l'apertura AES-GCM della chiave avvolta, che rifiuta un PIN sbagliato. Prima della cifratura c'era un hash PBKDF2, confrontato in tempo costante: viene sostituito al primo sblocco con il PIN.
 - Tentativi errati:
 
 | Tentativi falliti | Effetto |
@@ -156,22 +156,21 @@ Pattern:
 
 - Il contatore e l'attesa sono salvati nel Keychain, così non si azzerano reinstallando o cancellando le preferenze.
 - L'attesa si misura col tempo dall'avvio del dispositivo, non con l'ora: cambiare data e ora non la accorcia. Dopo un riavvio ricomincia per intero.
-- **PIN dimenticato:** se il database non contiene dati, si può reimpostare il PIN dopo il codice del dispositivo. Serve perché su iPhone il Keychain sopravvive alla disinstallazione. Con dati presenti non c'è modo di reimpostarlo: è una scelta, perché chi conosce il codice del dispositivo non deve poter entrare nell'app. Con la cifratura (§ 5.7) lo si può reimpostare anche con dati presenti, ma cancellandoli: i dati restano irrecuperabili.
+- **PIN dimenticato:** si può reimpostare dopo il codice del dispositivo. Serve perché su iPhone il Keychain sopravvive alla disinstallazione. Con dati presenti, reimpostarlo li cancella, con le copie di sicurezza, dopo una conferma esplicita (§ 5.7): i dati non si possono recuperare, per scelta, perché chi conosce il codice del dispositivo non deve poter entrare nell'app. Cancellarli non gli rivela nulla.
 - **Nessuna cancellazione automatica dei dati** dopo N tentativi in v1.
-- Il tentativo viene contato **prima** del calcolo dell'hash: chiudere l'app durante la verifica non lo annulla.
-- Con la cifratura il PIN apre la chiave del database invece di confrontare un hash (§ 5.7).
+- Il tentativo viene contato **prima** della derivazione dal PIN: chiudere l'app durante la verifica non lo annulla.
 
 ### 5.3 Biometria
 
 - Opzionale. Si attiva dopo l'impostazione del PIN, con una proposta al primo avvio e un interruttore nelle Impostazioni.
 - Sblocco con `LAContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, ...)`.
-- Lo sblocco legge un token dal Keychain protetto con `.biometryCurrentSet`, invece di fidarsi del solo esito di `evaluatePolicy`: decide il Secure Enclave, e con la cifratura la stessa voce custodirà la chiave del database (§ 5.7).
-- **Cambio delle impronte o dei volti registrati:** il sistema cancella il token; la biometria viene disattivata e l'app chiede il PIN, poi propone di riattivarla.
+- Lo sblocco legge dal Keychain una copia della chiave del database protetta con `.biometryCurrentSet`, invece di fidarsi del solo esito di `evaluatePolicy`: decide il Secure Enclave (§ 5.7). Prima della cifratura la voce conteneva un token casuale, sostituito dalla chiave al primo sblocco con il PIN.
+- **Cambio delle impronte o dei volti registrati:** il sistema cancella la voce; la biometria viene disattivata e l'app chiede il PIN, poi propone di riattivarla.
 - In Info.plist: `NSFaceIDUsageDescription` = "Usa Face ID per sbloccare i tuoi dati finanziari."
 
 ### 5.4 Ciclo di vita del blocco
 
-Il database resta aperto per tutta la sessione; con la cifratura si chiuderà al blocco (§ 5.7). Il blocco agisce sulla **UI**: finché l'app non è sbloccata, nessuna schermata con dati viene mostrata.
+Il database si apre solo dopo lo sblocco e si chiude al blocco, che cancella la chiave dalla memoria (§ 5.7). Finché l'app non è sbloccata, nessuna schermata con dati viene mostrata.
 
 | Evento | Azione |
 |---|---|
@@ -187,16 +186,16 @@ Il database resta aperto per tutta la sessione; con la cifratura si chiuderà al
 
 - **Posizione del file:** `Application Support/<bundle-id>/homefinances.sqlite`, con WAL attivo (`DatabasePool`).
 - **iOS/iPadOS:** classe Data Protection di default (`completeUntilFirstUserAuthentication`).
-- **Backup di sistema** (iCloud/Finder su iOS, Time Machine su Mac): il database è incluso di default, e l'utente può escluderlo nelle Impostazioni. L'esclusione vale per l'intera cartella del database, comprese le copie di sicurezza, e non tocca i backup già fatti. L'app non cifra i dati: la protezione dipende da quella dei backup. Con la cifratura il file nei backup sarà cifrato (§ 5.7).
+- **Backup di sistema** (iCloud/Finder su iOS, Time Machine su Mac): il database è incluso di default, e l'utente può escluderlo nelle Impostazioni. L'esclusione vale per l'intera cartella del database, comprese le copie di sicurezza, e non tocca i backup già fatti. Nei backup il database è cifrato, e la chiave non c'è: resta sul dispositivo (§ 5.7).
 - **Ripristino su un nuovo dispositivo:**
-  - l'hash del PIN è `ThisDeviceOnly` e quindi non viene ripristinato;
-  - se l'app trova un database ma nessun PIN, chiede di autenticarsi con il codice del dispositivo (`.deviceOwnerAuthentication`), poi fa impostare un nuovo PIN.
-  - con la cifratura questo ripristino non sarà più possibile su un altro dispositivo (§ 5.7).
-- **Export compliance App Store:** l'app usa crittografia per l'hash del PIN e per cifrare i file di export con password (AES-GCM di CryptoKit), e con la cifratura anche per il database (SQLCipher) e per la sua chiave. `ITSAppUsesNonExemptEncryption` è impostato a `NO`, ma con la cifratura dei file **va ricontrollato al momento della pubblicazione**, secondo le regole di Apple sull'esportazione.
+  - le voci del Keychain sono `ThisDeviceOnly` e quindi non vengono ripristinate;
+  - se l'app trova un database ma nessun PIN, chiede di autenticarsi con il codice del dispositivo (`.deviceOwnerAuthentication`), poi fa impostare un nuovo PIN;
+  - un database cifrato non si apre con la chiave del nuovo PIN: l'app lo spiega e permette di ricominciare da zero, poi si importa un file esportato (§ 5.7). Un database in chiaro, da un backup di prima della cifratura, si apre e viene cifrato.
+- **Export compliance App Store:** l'app usa crittografia per l'hash del PIN e per cifrare i file di export con password (AES-GCM di CryptoKit), e con la cifratura anche per il database (SQLCipher) e per la sua chiave. `ITSAppUsesNonExemptEncryption` è impostato a `NO`, ma con la cifratura dei file **va ricontrollato al momento della pubblicazione**, secondo le regole di Apple sull'esportazione (piano della cifratura, § 4.5).
 
-### 5.6 Predisposizione per la cifratura futura
+### 5.6 Predisposizione per la cifratura (storico)
 
-Per aggiungere SQLCipher in seguito senza riscrivere nulla:
+Realizzata con il § 5.7; resta per spiegare come era stato preparato il codice. Per aggiungere SQLCipher in seguito senza riscrivere nulla:
 
 - **Apertura del database centralizzata** in un solo punto (`AppDatabase.open(at:configuration:)` nel modulo `Persistence`). Nessun altro modulo crea connessioni o conosce il percorso del file.
 - **Accesso ai dati solo tramite i protocolli dei repository**, mai GRDB direttamente dalle feature.
@@ -210,11 +209,11 @@ Per aggiungere SQLCipher in seguito senza riscrivere nulla:
   Lo schema non cambia.
 - **Il PIN potrà diventare la base della chiave**, con la gerarchia di chiavi della versione 1.0 di questo documento. Al primo sblocco dopo l'aggiornamento si migra dall'hash al wrapping della chiave.
 
-### 5.7 Cifratura del database (in sviluppo)
+### 5.7 Cifratura del database
 
-Decisa il 14 novembre 2026. Piano, motivazioni e step in [PIANO-CIFRATURA.md](PIANO-CIFRATURA.md). Finché non è completata valgono i § 5.1–5.5; dove cambia qualcosa, lo indicano con un rimando qui.
+Decisa il 14 novembre 2026, completata il 15 novembre 2026. Piano, motivazioni, note di sviluppo e prove manuali in [PIANO-CIFRATURA.md](PIANO-CIFRATURA.md).
 
-- **SQLCipher** cifra l'intero file del database, con GRDB collegato a SQLCipher invece che al SQLite di sistema. Il modo di integrarlo con Swift Package Manager si sceglie con una prova tecnica (piano, § 3.1).
+- **SQLCipher** cifra l'intero file del database, con GRDB collegato a SQLCipher invece che al SQLite di sistema. Con Swift Package Manager, tramite il fork ufficiale `sqlcipher/GRDB.swift` e il pacchetto `SQLCipher.swift` di Zetetic (piano, § 3.1). La licenza di SQLCipher (BSD) e quella di GRDB (MIT) sono riportate in Impostazioni › Licenze.
 - **Gerarchia delle chiavi:**
   - una **chiave del database** casuale da 256 bit, generata una volta e mai cambiata in v1;
   - avvolta con AES-256-GCM da una chiave derivata dal **PIN** (PBKDF2-HMAC-SHA256, ≥ 600.000 iterazioni, salt casuale), e poi da una chiave P-256 del **Secure Enclave**, che non lascia il dispositivo: un PIN di 6 cifre non si può provare fuori dal dispositivo;
@@ -223,7 +222,7 @@ Decisa il 14 novembre 2026. Piano, motivazioni e step in [PIANO-CIFRATURA.md](PI
 - **SQLCipher riceve la chiave grezza** (`PRAGMA key = "x'…'"`), senza la sua derivazione da password.
 - **PIN:** la verifica è l'apertura AES-GCM della chiave, e l'hash del § 5.2 non serve più. Tentativi e attese restano quelli del § 5.2. Cambiare il PIN riavvolge la stessa chiave, senza ricifrare il database.
 - **Ciclo di vita:** il database si apre solo dopo lo sblocco. Al blocco si chiude e la chiave viene cancellata dalla memoria (cambia il § 5.4).
-- **Dati presenti, da bloccati:** si capiscono dall'esistenza del file e della chiave avvolta nel Keychain, senza aprire il database.
+- **Dati presenti, da bloccati:** si capiscono senza aprire il database. Per un file cifrato conta il segno `homefinances.sqlite.seeded`, lasciato accanto dall'inserimento dei dati iniziali e dall'import; un file in chiaro, di prima della cifratura, si legge.
 - **Ripristino su un altro dispositivo:** non è supportato, perché la chiave non lascia il dispositivo (cambia il § 5.5). Dopo il nuovo PIN il database non si apre: l'app spiega che i dati vengono da un altro dispositivo e offre di ricominciare da zero, dopo il codice del dispositivo e una conferma esplicita. Poi si importa un file `.homefinances` esportato dal dispositivo di origine. L'import non parte direttamente da questa schermata: richiede un database aperto, e i dati illeggibili andrebbero comunque cancellati.
 - **PIN dimenticato** (cambia il § 5.2): si può reimpostare anche con dati presenti, dopo il codice del dispositivo e una conferma esplicita, ma i dati e le copie di sicurezza vengono cancellati. Senza il PIN non si aprono, quindi cancellarli non rivela nulla a chi conosce il codice del dispositivo. Si cancella anche un database vuoto, che con la chiave del nuovo PIN non si aprirebbe.
 - **Errore della migrazione** (per esempio spazio esaurito): i dati restano in chiaro e intatti, l'app lo dice con un avviso dopo lo sblocco e riprova al prossimo sblocco con il PIN.
@@ -552,7 +551,7 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 | Sicurezza | Sblocco con Face ID/Touch ID (switch), Cambia PIN, Blocco automatico (solo Mac: 1/5/15/30 min) |
 | Dati | Gestisci categorie, Gestisci conti, Esporta database, Importa database, Annulla ultimo import, Esporta CSV (§ 10), Includi nei backup di sistema (§ 5.5) |
 | Generale | Valuta (sempre in sola lettura in v1) |
-| Informazioni | Versione, privacy ("I tuoi dati non lasciano mai questo dispositivo") |
+| Informazioni | Versione, licenze delle componenti di terze parti (SQLCipher, GRDB), privacy ("I tuoi dati non lasciano mai questo dispositivo") |
 
 - **Cambia PIN:** chiede il PIN attuale e quello nuovo (con conferma). Poi salva nel Keychain un nuovo salt e il nuovo hash, e azzera il contatore dei tentativi.
 - **Gestisci categorie:** elenco diviso per Entrate/Uscite. Si possono aggiungere, rinominare, scegliere icona e colore, riordinare e archiviare.

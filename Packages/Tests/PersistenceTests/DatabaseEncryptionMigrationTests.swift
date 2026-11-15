@@ -118,6 +118,56 @@ final class DatabaseEncryptionMigrationTests {
         #expect(error as? PersistenceError == .keyRequired)
     }
 
+    // MARK: Prestazioni (piano della cifratura, step 7)
+
+    /// Una decina d'anni di uso intenso: 12.000 operazioni. I limiti sono larghi apposta: il test segnala
+    /// solo un peggioramento evidente. I tempi misurati finiscono nel log dei test.
+    @Test func largeDatabaseMigratesOpensAndExportsInReasonableTime() async throws {
+        let operations = 12_000
+        let plain = try await makePlaintextDatabase(operations: 1)
+        try await plain.writer.write { db in
+            for index in 1..<operations {
+                try db.execute(
+                    sql: """
+                        INSERT INTO operation
+                        (id, kind, amount, currency, date, account_id, category_id, note, created_at, updated_at)
+                        SELECT ?, kind, amount, currency, date, account_id, category_id, ?, created_at, updated_at
+                        FROM operation LIMIT 1
+                        """,
+                    arguments: [UUID().uuidString, "Spesa numero \(index)"]
+                )
+            }
+        }
+        try plain.close()
+
+        let clock = ContinuousClock()
+        let store = makeStore()
+        var start = clock.now
+        await store.open(encryptionKey: Self.key)
+        let migration = clock.now - start
+        #expect(store.encryptionMigrationError == nil)
+        let count = try await database(of: store).writer.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM operation")
+        }
+        #expect(count == operations)
+
+        store.close()
+        start = clock.now
+        await store.open(encryptionKey: Self.key)
+        let reopening = clock.now - start
+        _ = try database(of: store)
+
+        start = clock.now
+        let exported = try await store.exportDatabase()
+        let export = clock.now - start
+        #expect(try DatabaseInspector.validate(fileAt: exported).movementCount == operations)
+
+        print("Cifratura di \(operations) operazioni — migrazione: \(migration), riapertura: \(reopening), export: \(export)")
+        #expect(migration < .seconds(30))
+        #expect(reopening < .seconds(2), "Si riapre a ogni sblocco")
+        #expect(export < .seconds(10))
+    }
+
     // MARK: Interruzioni
 
     /// L'app si era chiusa durante l'export: il database è ancora in chiaro, accanto un file a metà.

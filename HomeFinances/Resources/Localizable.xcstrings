@@ -10,7 +10,16 @@
     "Blocca" : {
 
     },
+    "Cancella e ricomincia" : {
+
+    },
+    "Cancellare i dati di questo dispositivo?" : {
+
+    },
     "Cerca" : {
+
+    },
+    "Cifratura non completata" : {
 
     },
     "Conti" : {
@@ -19,7 +28,13 @@
     "Dati" : {
 
     },
+    "Dati di un altro dispositivo" : {
+
+    },
     "Dati importati: %lld movimenti" : {
+
+    },
+    "Dati non cancellati" : {
 
     },
     "Dati ripristinati: %lld movimenti" : {
@@ -38,6 +53,12 @@
 
     },
     "Home Finances" : {
+
+    },
+    "I dati che non si possono aprire e le loro copie di sicurezza verranno cancellati. L'operazione non si può annullare." : {
+
+    },
+    "I dati qui sono cifrati con una chiave che resta sul dispositivo dove sono stati creati, ad esempio perché vengono dal suo backup. Su questo dispositivo non si possono aprire.\n\nPer riaverli, esporta un file dal dispositivo di origine (Impostazioni › Dati › Esporta database), ricomincia da zero e importalo qui." : {
 
     },
     "Importa" : {
@@ -61,6 +82,12 @@
     "Inserisci la password scelta quando il file è stato esportato." : {
 
     },
+    "Non è stato possibile cifrare i dati, per esempio per lo spazio esaurito. I dati sono intatti e restano protetti dal PIN come prima. Si riproverà al prossimo sblocco con il PIN." : {
+
+    },
+    "Non è stato possibile confermare la tua identità o cancellare i file. Riprova." : {
+
+    },
     "Nuova operazione" : {
 
     },
@@ -77,6 +104,9 @@
 
     },
     "Per aprire i dati serve il PIN, almeno questa volta." : {
+
+    },
+    "Ricomincia da zero" : {
 
     },
     "Riprova" : {
