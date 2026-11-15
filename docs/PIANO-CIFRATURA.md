@@ -217,6 +217,13 @@ Ogni step si chiude con il codice che compila e i test che passano. Compilazione
   - "Annulla ultimo import" e il ripristino dopo un errore usano le copie così come sono, già cifrate;
   - copie preparate e rimaste per un'interruzione si cancellano all'avvio;
   - senza chiave (database ancora in chiaro, Face ID con il vecchio token) tutto resta in chiaro come prima, e lo cifra la migrazione al primo sblocco con il PIN.
+- **Step 6:**
+  - **chiave sbagliata:** un database cifrato che non si apre con la chiave della sessione (SQLCipher risponde `SQLITE_NOTADB`) dà `PersistenceError.keyMismatch`. Succede dopo il ripristino del backup di un altro dispositivo: l'onboarding "Dati trovati" fa scegliere un nuovo PIN, che crea una chiave nuova. Un file danneggiato dà lo stesso errore;
+  - la schermata spiega e offre solo "Ricomincia da zero", dopo il codice del dispositivo e una conferma (`AppLock.eraseUnreadableData`). Poi si importa il file esportato dall'altro dispositivo, dalle Impostazioni. **Diverso dal § 3.5:** non c'è un "Importa" diretto, perché l'import richiede un database aperto e i dati illeggibili andrebbero comunque cancellati;
+  - **PIN dimenticato con dati presenti** (decisione del 15 novembre 2026): il pulsante compare sempre; con dati presenti la conferma dice che vengono cancellati, con le copie di sicurezza. Si cancella prima delle credenziali: se non riesce, il PIN resta. Si cancella anche il database vuoto, che prima restava e con la nuova chiave non si sarebbe aperto;
+  - `DatabaseStore.eraseAllData()` cancella database, file di SQLite, segni accanto, copie di sicurezza e copie preparate; `AppLock` la riceve come `eraseData`;
+  - **errore della migrazione:** avviso dopo lo sblocco, una volta per apertura;
+  - **biometria cambiata:** nessun cambiamento: dopo lo sblocco con il PIN la chiave c'è, e "Riattiva" crea la nuova copia.
 
 ### 4.4 Rischi
 
@@ -243,3 +250,4 @@ Tutte confermate il 14 novembre 2026.
 | 4 | Chiusura del database al blocco (§ 3.4) | Sì, con la chiave cancellata dalla memoria |
 | 5 | Ripristino su un altro dispositivo (§ 3.5) | Non supportato: si usa l'export; l'app lo spiega e offre import o ripartenza |
 | 6 | Formato e password dell'export (§ 3.7) | Formato invariato, password ancora facoltativa |
+| 7 | PIN dimenticato con dati presenti (15 novembre 2026) | Si può reimpostare cancellando i dati, dopo il codice del dispositivo e una conferma |

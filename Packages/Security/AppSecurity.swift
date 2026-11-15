@@ -29,8 +29,10 @@ public final class AppLock {
     public private(set) var loadError: (any Error)?
     /// Sul ripristino senza PIN, il codice del dispositivo è stato verificato.
     public private(set) var isRestoreAuthorized = false
-    /// C'è un PIN ma nessun dato da proteggere: si può reimpostare col codice del dispositivo.
+    /// C'è un PIN e si può reimpostare col codice del dispositivo (§ 5.2).
     public private(set) var canResetForgottenPIN = false
+    /// Reimpostare il PIN dimenticato cancella i dati: senza il PIN non si possono aprire (§ 5.7).
+    public private(set) var forgottenPINResetErasesData = false
     /// Overlay di privacy per lo switcher app (iOS/iPadOS, `scenePhase == .inactive`).
     public var isPrivacyCovered = false
     /// Proposta di riattivare la biometria, disattivata perché le biometrie registrate sono cambiate.
@@ -43,6 +45,7 @@ public final class AppLock {
     private let biometrics: BiometricLock
     private let authenticator: any BiometricAuthenticator
     private let hasExistingData: () -> Bool
+    private let eraseData: (@MainActor () throws -> Void)?
     private var isSetupPINSaved = false
     /// Chiave creata con il PIN dell'onboarding, in attesa di `finishSetup`.
     private var setupKey: DatabaseKey?
@@ -54,10 +57,12 @@ public final class AppLock {
     }
 
     /// `hasExistingData` viene richiamata a ogni controllo: i dati possono comparire durante la sessione.
+    /// `eraseData` cancella il database e le sue copie: serve al PIN dimenticato e ai dati che non si aprono.
     public init(
         store: any SecureStore,
         authenticator: any BiometricAuthenticator,
         hasExistingData: @escaping () -> Bool,
+        eraseData: (@MainActor () throws -> Void)? = nil,
         deviceWrapper: (any DeviceKeyWrapper)? = nil,
         pinIterations: Int = PasscodeService.defaultIterations,
         clock: SecurityClock = .system
@@ -66,6 +71,7 @@ public final class AppLock {
         biometrics = BiometricLock(store: store, authenticator: authenticator, passcode: passcode)
         self.authenticator = authenticator
         self.hasExistingData = hasExistingData
+        self.eraseData = eraseData
         load()
     }
 
@@ -102,7 +108,8 @@ public final class AppLock {
     }
 
     private func updateCanResetForgottenPIN() {
-        canResetForgottenPIN = phase == .locked && loadError == nil && !hasExistingData()
+        canResetForgottenPIN = phase == .locked && loadError == nil
+        forgottenPINResetErasesData = canResetForgottenPIN && hasExistingData()
     }
 
     // MARK: Blocco e sblocco
@@ -178,6 +185,7 @@ public final class AppLock {
         databaseKey = key
         phase = .unlocked
         canResetForgottenPIN = false
+        forgottenPINResetErasesData = false
         if biometryChangedSinceUnlock {
             biometryChangedSinceUnlock = false
             offersBiometricReenable = biometry != .unavailable
@@ -186,14 +194,24 @@ public final class AppLock {
 
     // MARK: PIN dimenticato
 
-    /// Cancella il PIN, dopo il codice del dispositivo, e riapre l'onboarding. Possibile solo se il database
-    /// non contiene dati: su iPhone il Keychain sopravvive alla disinstallazione e senza questa via
-    /// un PIN dimenticato renderebbe l'app inutilizzabile. Con dati presenti non si può fare.
+    /// Cancella il PIN, dopo il codice del dispositivo, e riapre l'onboarding: su iPhone il Keychain
+    /// sopravvive alla disinstallazione e senza questa via un PIN dimenticato renderebbe l'app inutilizzabile.
+    ///
+    /// Cancella anche i dati (§ 5.7): sono cifrati con una chiave che solo il PIN apre, e il nuovo PIN ne avrà
+    /// un'altra. Il recupero resta impossibile (§ 5.2); cancellarli non rivela nulla a chi conosce il codice
+    /// del dispositivo. Si cancella anche un database vuoto, che con la nuova chiave non si aprirebbe.
     public func resetForgottenPIN() async throws {
-        guard phase == .locked, !hasExistingData() else { throw AppLockError.invalidState }
-        try await authenticator.authenticateDeviceOwner(reason: String(localized: "Conferma la tua identità per scegliere un nuovo PIN"))
+        guard phase == .locked, loadError == nil else { throw AppLockError.invalidState }
+        // Senza il modo di cancellarli, i dati resterebbero lì e illeggibili.
+        if eraseData == nil, hasExistingData() { throw AppLockError.invalidState }
+        let reason = hasExistingData()
+            ? String(localized: "Conferma la tua identità per cancellare i dati e scegliere un nuovo PIN")
+            : String(localized: "Conferma la tua identità per scegliere un nuovo PIN")
+        try await authenticator.authenticateDeviceOwner(reason: reason)
         // Ricontrollato dopo il prompt: nel frattempo lo stato potrebbe essere cambiato.
-        guard phase == .locked, !hasExistingData() else { throw AppLockError.invalidState }
+        guard phase == .locked else { throw AppLockError.invalidState }
+        // Prima i dati: se non si riesce a cancellarli, il PIN resta e si può riprovare.
+        try eraseData?()
         try biometrics.disable()
         try passcode.removeCredential()
         isBiometricUnlockEnabled = false
@@ -201,7 +219,20 @@ public final class AppLock {
         databaseKey = nil
         biometricPromptedSinceLock = false
         canResetForgottenPIN = false
+        forgottenPINResetErasesData = false
         phase = .setup(.firstLaunch)
+    }
+
+    // MARK: Dati che non si aprono
+
+    /// Cancella i dati ad app sbloccata, dopo il codice del dispositivo: per un database cifrato con una
+    /// chiave che questo dispositivo non ha, come dopo il ripristino del backup di un altro dispositivo (§ 5.7).
+    /// Poi il database si riapre, vuoto, con la chiave della sessione.
+    public func eraseUnreadableData() async throws {
+        guard phase == .unlocked, let eraseData else { throw AppLockError.invalidState }
+        try await authenticator.authenticateDeviceOwner(reason: String(localized: "Conferma la tua identità per cancellare i dati e ricominciare"))
+        guard phase == .unlocked else { throw AppLockError.invalidState }
+        try eraseData()
     }
 
     // MARK: Onboarding

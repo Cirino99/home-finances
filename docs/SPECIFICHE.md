@@ -4,8 +4,9 @@
 
 > Documento base per lo sviluppo. Raccoglie le decisioni prese su piattaforme, stack, sicurezza, modello dati, navigazione e schermate.
 > Le voci marcate **[DA CONFERMARE]** sono proposte non ancora approvate.
-> Versione 1.17 — 14 novembre 2026
+> Versione 1.18 — 15 novembre 2026
 > **Modifiche:**
+> - 1.18 — con la cifratura, il PIN dimenticato con dati presenti permette di cancellarli e ricominciare (§ 5.2, § 5.7). Dati di un altro dispositivo: si ricomincia da zero e poi si importa un file (§ 5.7).
 > - 1.17 — decisa la cifratura del database con SQLCipher, ora in sviluppo (§ 5.7), tolta dagli sviluppi futuri (§ 13). Seconda dipendenza esterna (§ 3). Piano in [PIANO-CIFRATURA.md](PIANO-CIFRATURA.md).
 > - 1.16 — trasferimenti tra conti e tab Conti, tolti dagli sviluppi futuri (§ 13). Nuova tabella `transfer` con la migrazione `v2` (§ 6.2), saldi dei conti (§ 6.4), tab Conti (§ 7, § 8.7), editor e dettaglio del trasferimento (§ 8.8), Storico con trasferimenti e filtro per conto (§ 8.3), export e CSV (§ 10). Piano e decisioni in [PIANO-CONTI-TRASFERIMENTI.md](PIANO-CONTI-TRASFERIMENTI.md).
 > - 1.15 — le specifiche si spostano da `README.md` a `docs/SPECIFICHE.md`; il README presenta il progetto.
@@ -155,7 +156,7 @@ Pattern:
 
 - Il contatore e l'attesa sono salvati nel Keychain, così non si azzerano reinstallando o cancellando le preferenze.
 - L'attesa si misura col tempo dall'avvio del dispositivo, non con l'ora: cambiare data e ora non la accorcia. Dopo un riavvio ricomincia per intero.
-- **PIN dimenticato:** se il database non contiene dati, si può reimpostare il PIN dopo il codice del dispositivo. Serve perché su iPhone il Keychain sopravvive alla disinstallazione. Con dati presenti non c'è modo di reimpostarlo: è una scelta, perché chi conosce il codice del dispositivo non deve poter entrare nell'app.
+- **PIN dimenticato:** se il database non contiene dati, si può reimpostare il PIN dopo il codice del dispositivo. Serve perché su iPhone il Keychain sopravvive alla disinstallazione. Con dati presenti non c'è modo di reimpostarlo: è una scelta, perché chi conosce il codice del dispositivo non deve poter entrare nell'app. Con la cifratura (§ 5.7) lo si può reimpostare anche con dati presenti, ma cancellandoli: i dati restano irrecuperabili.
 - **Nessuna cancellazione automatica dei dati** dopo N tentativi in v1.
 - Il tentativo viene contato **prima** del calcolo dell'hash: chiudere l'app durante la verifica non lo annulla.
 - Con la cifratura il PIN apre la chiave del database invece di confrontare un hash (§ 5.7).
@@ -223,7 +224,9 @@ Decisa il 14 novembre 2026. Piano, motivazioni e step in [PIANO-CIFRATURA.md](PI
 - **PIN:** la verifica è l'apertura AES-GCM della chiave, e l'hash del § 5.2 non serve più. Tentativi e attese restano quelli del § 5.2. Cambiare il PIN riavvolge la stessa chiave, senza ricifrare il database.
 - **Ciclo di vita:** il database si apre solo dopo lo sblocco. Al blocco si chiude e la chiave viene cancellata dalla memoria (cambia il § 5.4).
 - **Dati presenti, da bloccati:** si capiscono dall'esistenza del file e della chiave avvolta nel Keychain, senza aprire il database.
-- **Ripristino su un altro dispositivo:** non è supportato, perché la chiave non lascia il dispositivo (cambia il § 5.5). Se l'app trova un database cifrato senza chiave, lo spiega e offre di importare un file `.homefinances` oppure di ricominciare da zero, dopo il codice del dispositivo e una conferma esplicita.
+- **Ripristino su un altro dispositivo:** non è supportato, perché la chiave non lascia il dispositivo (cambia il § 5.5). Dopo il nuovo PIN il database non si apre: l'app spiega che i dati vengono da un altro dispositivo e offre di ricominciare da zero, dopo il codice del dispositivo e una conferma esplicita. Poi si importa un file `.homefinances` esportato dal dispositivo di origine. L'import non parte direttamente da questa schermata: richiede un database aperto, e i dati illeggibili andrebbero comunque cancellati.
+- **PIN dimenticato** (cambia il § 5.2): si può reimpostare anche con dati presenti, dopo il codice del dispositivo e una conferma esplicita, ma i dati e le copie di sicurezza vengono cancellati. Senza il PIN non si aprono, quindi cancellarli non rivela nulla a chi conosce il codice del dispositivo. Si cancella anche un database vuoto, che con la chiave del nuovo PIN non si aprirebbe.
+- **Errore della migrazione** (per esempio spazio esaurito): i dati restano in chiaro e intatti, l'app lo dice con un avviso dopo lo sblocco e riprova al prossimo sblocco con il PIN.
 - **Migrazione dei dati esistenti:** al primo sblocco con il PIN dopo l'aggiornamento, con i passi del § 5.6, ripartibili se l'app si chiude a metà. Si cifrano anche le copie "prima-import". Il file in chiaro si cancella per ultimo.
 - **Export e import** (§ 10): il formato `.homefinances` non cambia. L'export passa da `sqlcipher_export` a un file in chiaro temporaneo, poi alla password facoltativa come oggi. L'import cifra il file con la chiave del dispositivo prima della sostituzione. Le copie "prima-import" sono cifrate.
 

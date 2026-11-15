@@ -9,11 +9,12 @@ struct AppLockTests {
     let clock = TestClock()
     let deviceWrapper = FakeDeviceKeyWrapper()
 
-    func makeAppLock(hasExistingData: Bool = false) -> AppLock {
+    func makeAppLock(hasExistingData: Bool = false, eraseData: (@MainActor () throws -> Void)? = nil) -> AppLock {
         AppLock(
             store: store,
             authenticator: authenticator,
             hasExistingData: { hasExistingData },
+            eraseData: eraseData,
             deviceWrapper: deviceWrapper,
             pinIterations: 1,
             clock: clock.security
@@ -149,17 +150,78 @@ struct AppLockTests {
         }
     }
 
-    @Test func forgottenPINCannotBeResetWithData() async throws {
+    /// Con la cifratura i dati non si possono aprire senza il PIN: reimpostarlo li cancella (§ 5.7).
+    @Test func forgottenPINResetWithDataErasesThem() async throws {
+        _ = try await onboard()
+        let erased = EraseCounter()
+        let appLock = makeAppLock(hasExistingData: true) { erased.count += 1 }
+        #expect(appLock.phase == .locked)
+        #expect(appLock.canResetForgottenPIN)
+        #expect(appLock.forgottenPINResetErasesData)
+
+        try await appLock.resetForgottenPIN()
+
+        #expect(erased.count == 1)
+        #expect(authenticator.state.withLock { $0.deviceOwnerPrompts } == 1)
+        #expect(appLock.phase == .setup(.firstLaunch))
+        #expect(!appLock.forgottenPINResetErasesData)
+    }
+
+    @Test func forgottenPINResetWithoutDataErasesTheEmptyDatabase() async throws {
+        _ = try await onboard()
+        let erased = EraseCounter()
+        let appLock = makeAppLock { erased.count += 1 }
+        #expect(!appLock.forgottenPINResetErasesData)
+
+        try await appLock.resetForgottenPIN()
+        #expect(erased.count == 1, "Con la nuova chiave il vecchio database vuoto non si aprirebbe")
+    }
+
+    @Test func forgottenPINResetKeepsPINIfErasingFails() async throws {
+        _ = try await onboard()
+        let appLock = makeAppLock(hasExistingData: true) { throw CocoaError(.fileWriteNoPermission) }
+
+        await #expect(throws: CocoaError.self) {
+            try await appLock.resetForgottenPIN()
+        }
+        #expect(appLock.phase == .locked)
+        #expect(await appLock.unlock(withPIN: "123456") == .success)
+    }
+
+    @Test func forgottenPINCannotBeResetWithDataAndNoWayToErase() async throws {
         _ = try await onboard()
         let appLock = makeAppLock(hasExistingData: true)
-        #expect(appLock.phase == .locked)
-        #expect(!appLock.canResetForgottenPIN)
 
         await #expect(throws: AppLockError.invalidState) {
             try await appLock.resetForgottenPIN()
         }
         #expect(authenticator.state.withLock { $0.deviceOwnerPrompts } == 0)
         #expect(await appLock.unlock(withPIN: "123456") == .success)
+    }
+
+    // MARK: Dati che non si aprono
+
+    @Test func unreadableDataIsErasedOnlyUnlockedAndAfterDeviceOwner() async throws {
+        _ = try await onboard()
+        let erased = EraseCounter()
+        let appLock = makeAppLock(hasExistingData: true) { erased.count += 1 }
+
+        await #expect(throws: AppLockError.invalidState) {
+            try await appLock.eraseUnreadableData()
+        }
+        #expect(await appLock.unlock(withPIN: "123456") == .success)
+
+        authenticator.state.withLock { $0.succeeds = false }
+        await #expect(throws: AuthenticationFailed.self) {
+            try await appLock.eraseUnreadableData()
+        }
+        #expect(erased.count == 0)
+
+        authenticator.state.withLock { $0.succeeds = true }
+        try await appLock.eraseUnreadableData()
+        #expect(erased.count == 1)
+        #expect(appLock.phase == .unlocked, "La sessione resta: il database rinasce con la sua chiave")
+        #expect(appLock.databaseKey != nil)
     }
 
     @Test func forgottenPINResetRequiresDeviceOwner() async throws {
@@ -175,7 +237,7 @@ struct AppLockTests {
         #expect(await appLock.unlock(withPIN: "123456") == .success)
     }
 
-    @Test func dataAppearingDuringTheSessionBlocksPINReset() async throws {
+    @Test func dataAppearingDuringTheSessionMakesPINResetEraseThem() async throws {
         var hasData = false
         let appLock = AppLock(
             store: store,
@@ -190,7 +252,8 @@ struct AppLockTests {
         hasData = true
         appLock.lock()
 
-        #expect(!appLock.canResetForgottenPIN)
+        #expect(appLock.canResetForgottenPIN)
+        #expect(appLock.forgottenPINResetErasesData)
     }
 
     @Test func changedBiometryDisablesUnlockAndOffersReenable() async throws {
@@ -238,4 +301,9 @@ struct AppLockTests {
             try appLock.disableBiometricUnlock()
         }
     }
+}
+
+@MainActor
+private final class EraseCounter {
+    var count = 0
 }

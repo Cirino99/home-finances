@@ -183,7 +183,8 @@ public final class DatabaseStore: DataTransferring {
     private func openState() -> State {
         guard let url else { return .failed(DataTransferError.databaseUnavailable) }
         let key: String?
-        switch AppDatabase.fileFormat(at: url) {
+        let format = AppDatabase.fileFormat(at: url)
+        switch format {
         case .plaintext:
             key = nil
         case .encrypted:
@@ -199,9 +200,42 @@ public final class DatabaseStore: DataTransferring {
                 markSeeded()
             }
             return .ready(database)
+        } catch let error as DatabaseError where format == .encrypted && error.resultCode == .SQLITE_NOTADB {
+            // SQLCipher non riconosce le pagine: la chiave non è quella giusta.
+            return .failed(PersistenceError.keyMismatch)
         } catch {
             return .failed(error)
         }
+    }
+
+    // MARK: Cancellazione
+
+    /// Cancella il database, le copie di sicurezza e i file accanto (§ 5.7): per il PIN dimenticato e per
+    /// i dati cifrati con una chiave che questo dispositivo non ha. Lo store resta chiuso: una nuova
+    /// apertura crea un database vuoto. Non si annulla.
+    public func eraseAllData() throws {
+        guard let url, !isOpening else { throw DataTransferError.databaseUnavailable }
+        if case .ready(let database) = state {
+            try database.close()
+        }
+        state = .closed
+        let fileManager = FileManager.default
+        // Il database per primo: senza, anche il segno dei dati iniziali non conta più.
+        let files = ["", "-wal", "-shm", "-journal", ".encrypting"].map { URL(filePath: url.path + $0) }
+            + [seededMarkerURL(for: url), DatabaseEncryptionMigration.markerURL(for: url)]
+            + [backupsDirectory].compactMap(\.self)
+        for file in files where fileManager.fileExists(atPath: file.path) {
+            try fileManager.removeItem(at: file)
+        }
+        removeLeftoverStagedFiles()
+        hasBackup = false
+        encryptionMigrationError = nil
+        generation += 1
+    }
+
+    /// L'utente ha visto l'errore della migrazione: si riproverà comunque al prossimo sblocco.
+    public func dismissEncryptionMigrationError() {
+        encryptionMigrationError = nil
     }
 
     private func currentDatabase() throws -> AppDatabase {

@@ -69,7 +69,62 @@ final class DatabaseStoreEncryptionTests {
 
         await store.open(encryptionKey: Self.otherKey)
         let error = try #require(failure(of: store))
-        #expect(error as? PersistenceError != .keyRequired, "Una chiave c'era: è sbagliata")
+        #expect(error as? PersistenceError == .keyMismatch, "Una chiave c'era: è sbagliata")
+    }
+
+    // MARK: Cancellazione (§ 5.7)
+
+    /// Dati di un altro dispositivo: si cancellano e il database rinasce con la chiave di questo.
+    @Test func erasingUnreadableDataStartsANewDatabase() async throws {
+        let store = makeStore()
+        await store.open(encryptionKey: Self.key)
+        try await database(of: store).seedIfNeeded(currency: "EUR")
+        store.markSeeded()
+        store.close()
+        await store.open(encryptionKey: Self.otherKey)
+        #expect(failure(of: store) as? PersistenceError == .keyMismatch)
+
+        let generation = store.generation
+        try store.eraseAllData()
+        #expect(!store.hasExistingData)
+        #expect(store.generation == generation + 1)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).filter { $0 != "tmp" }.isEmpty, "Nessun file rimasto")
+
+        await store.open(encryptionKey: Self.otherKey)
+        #expect(try !database(of: store).isSeeded(), "Vuoto, come al primo avvio")
+        #expect(AppDatabase.fileFormat(at: url) == .encrypted)
+    }
+
+    @Test func erasingRemovesBackupsAndMarkers() async throws {
+        let store = makeStore()
+        await store.open(encryptionKey: Self.key)
+        try await database(of: store).seedIfNeeded(currency: "EUR")
+        store.markSeeded()
+        let backups = root.appending(path: "Backups", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: backups, withIntermediateDirectories: true)
+        try await database(of: store).exportCopy(to: backups.appending(path: "prima-import-1.homefinances"), encryptionKey: Self.key)
+        FileManager.default.createFile(atPath: DatabaseEncryptionMigration.markerURL(for: url).path, contents: Data())
+
+        // Da bloccata, come per il PIN dimenticato.
+        store.close()
+        try store.eraseAllData()
+
+        #expect(!store.hasBackup)
+        #expect(!store.hasExistingData)
+        #expect(!FileManager.default.fileExists(atPath: backups.path))
+        #expect(!FileManager.default.fileExists(atPath: DatabaseEncryptionMigration.markerURL(for: url).path))
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
+
+    @Test func erasingAnOpenDatabaseClosesIt() async throws {
+        let store = makeStore()
+        await store.open(encryptionKey: Self.key)
+        try store.eraseAllData()
+        guard case .closed = store.state else {
+            Issue.record("Dopo la cancellazione lo store è chiuso")
+            return
+        }
+        #expect(!FileManager.default.fileExists(atPath: url.path))
     }
 
     /// Senza chiave (Face ID con il vecchio token) un database di prima della cifratura si apre in chiaro:

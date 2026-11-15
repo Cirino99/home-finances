@@ -19,7 +19,8 @@ struct HomeFinancesApp: App {
         _appLock = State(initialValue: AppLock(
             store: KeychainStore(service: "\(bundleID).security"),
             authenticator: SystemBiometricAuthenticator(service: "\(bundleID).security"),
-            hasExistingData: { store.hasExistingData }
+            hasExistingData: { store.hasExistingData },
+            eraseData: { try store.eraseAllData() }
         ))
     }
 

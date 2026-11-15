@@ -55,21 +55,22 @@ struct LockScreen: View {
                         .font(.callout)
                         // Sul pulsante: su iOS 26 la conferma è un popover che punta a chi la apre.
                         .confirmationDialog(
-                            "Reimpostare il PIN?",
+                            appLock.forgottenPINResetErasesData ? "Cancellare tutti i dati?" : "Reimpostare il PIN?",
                             isPresented: $isConfirmingReset,
                             titleVisibility: .visible
                         ) {
-                            Button("Continua") {
-                                Task {
-                                    do {
-                                        try await appLock.resetForgottenPIN()
-                                    } catch {
-                                        resetFailed = true
-                                    }
-                                }
+                            if appLock.forgottenPINResetErasesData {
+                                Button("Cancella i dati e scegli un nuovo PIN", role: .destructive, action: resetPIN)
+                            } else {
+                                Button("Continua", action: resetPIN)
                             }
                         } message: {
-                            Text("Questa app non contiene dati. Dopo aver confermato la tua identità potrai scegliere un nuovo PIN.")
+                            if appLock.forgottenPINResetErasesData {
+                                // § 5.2 e § 5.7: i dati sono cifrati con una chiave che solo il PIN apre.
+                                Text("Senza il PIN i dati non si possono aprire: sono cifrati, e nessuno può recuperarli. Puoi cancellarli, con le loro copie di sicurezza, e ricominciare con un nuovo PIN. Poi potrai importare un file esportato in precedenza. L'operazione non si può annullare.")
+                            } else {
+                                Text("Questa app non contiene dati. Dopo aver confermato la tua identità potrai scegliere un nuovo PIN.")
+                            }
                         }
                 }
             }
@@ -80,7 +81,7 @@ struct LockScreen: View {
         .alert("PIN non reimpostato", isPresented: $resetFailed) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Non è stato possibile confermare la tua identità.")
+            Text("Non è stato possibile confermare la tua identità o cancellare i dati. Il PIN non è cambiato: riprova.")
         }
         .task(id: scenePhase) {
             // Al ritorno in primo piano, non durante il passaggio in background.
@@ -103,6 +104,16 @@ struct LockScreen: View {
                 .foregroundStyle(.red)
         } else {
             Text(" ")
+        }
+    }
+
+    private func resetPIN() {
+        Task {
+            do {
+                try await appLock.resetForgottenPIN()
+            } catch {
+                resetFailed = true
+            }
         }
     }
 

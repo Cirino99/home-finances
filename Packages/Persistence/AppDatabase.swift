@@ -324,6 +324,9 @@ public enum PersistenceError: Error, Equatable {
     case encryptionUnavailable
     /// Il database è cifrato e manca la chiave: serve sbloccare con il PIN.
     case keyRequired
+    /// Il database è cifrato, ma non con la chiave di questo dispositivo: di solito arriva dal backup
+    /// di un altro dispositivo, dove la chiave è rimasta (§ 5.7). Un file danneggiato dà lo stesso errore.
+    case keyMismatch
 }
 
 /// Com'è il file del database, visto senza aprirlo.

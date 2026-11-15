@@ -79,6 +79,19 @@ private struct UnlockedContent: View {
             SeededContent(database: database, store: store, appLock: appLock, router: router)
                 // Dopo un import si riparte da zero: niente di ciò che era a schermo è più valido.
                 .id(store.generation)
+                .alert(
+                    "Cifratura non completata",
+                    isPresented: Binding(
+                        get: { store.encryptionMigrationError != nil },
+                        set: { if !$0 { store.dismissEncryptionMigrationError() } }
+                    )
+                ) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text("Non è stato possibile cifrare i dati, per esempio per lo spazio esaurito. I dati sono intatti e restano protetti dal PIN come prima. Si riproverà al prossimo sblocco con il PIN.")
+                }
+        case .failed(let error as PersistenceError) where error == .keyMismatch:
+            UnreadableDataView(store: store, appLock: appLock)
         case .failed(let error as PersistenceError) where error == .keyRequired:
             // Sbloccata con il vecchio token di Face ID, che non contiene la chiave: serve il PIN.
             ContentUnavailableView {
@@ -100,6 +113,57 @@ private struct UnlockedContent: View {
                         appLock.reload()
                     }
                 }
+            }
+        }
+    }
+}
+
+/// Database cifrato con una chiave che questo dispositivo non ha (§ 5.7): di solito arriva dal backup di
+/// un altro dispositivo, dove la chiave è rimasta. Non si apre in nessun modo: si può solo ricominciare,
+/// e poi importare un file esportato dall'altro dispositivo.
+private struct UnreadableDataView: View {
+    let store: DatabaseStore
+    let appLock: AppLock
+    @State private var isConfirming = false
+    @State private var isErasing = false
+    @State private var eraseFailed = false
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("Dati di un altro dispositivo", systemImage: "lock.trianglebadge.exclamationmark")
+        } description: {
+            Text("I dati qui sono cifrati con una chiave che resta sul dispositivo dove sono stati creati, ad esempio perché vengono dal suo backup. Su questo dispositivo non si possono aprire.\n\nPer riaverli, esporta un file dal dispositivo di origine (Impostazioni › Dati › Esporta database), ricomincia da zero e importalo qui.")
+        } actions: {
+            Button("Ricomincia da zero", role: .destructive) { isConfirming = true }
+                .disabled(isErasing)
+                // Sul pulsante: su iOS 26 la conferma è un popover che punta a chi la apre.
+                .confirmationDialog(
+                    "Cancellare i dati di questo dispositivo?",
+                    isPresented: $isConfirming,
+                    titleVisibility: .visible
+                ) {
+                    Button("Cancella e ricomincia", role: .destructive, action: erase)
+                } message: {
+                    Text("I dati che non si possono aprire e le loro copie di sicurezza verranno cancellati. L'operazione non si può annullare.")
+                }
+        }
+        .alert("Dati non cancellati", isPresented: $eraseFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Non è stato possibile confermare la tua identità o cancellare i file. Riprova.")
+        }
+    }
+
+    private func erase() {
+        isErasing = true
+        Task {
+            defer { isErasing = false }
+            do {
+                // Lo store si chiude: `UnlockedContent` lo riapre, e nasce un database vuoto cifrato
+                // con la chiave di questo dispositivo. Poi la scelta della valuta, come al primo avvio.
+                try await appLock.eraseUnreadableData()
+            } catch {
+                eraseFailed = true
             }
         }
     }
