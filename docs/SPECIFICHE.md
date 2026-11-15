@@ -641,15 +641,14 @@ Il database viene aperto e migrato all'avvio. Il passo della valuta compare finc
 
 ### 10.3 Export
 
-Con la cifratura (§ 5.7) la copia passa da `sqlcipher_export` verso un file in chiaro temporaneo; il resto non cambia.
+Con la cifratura (§ 5.7) la copia esce in chiaro anche dal database cifrato: si apre su un altro dispositivo, con un'altra chiave, e a proteggerla è la password facoltativa.
 
 - **Punti di accesso:**
   - Impostazioni › Dati › **Esporta database**;
   - su Mac anche **File › Esporta database…** (⇧⌘E).
 - **Procedura:**
-  1. copia consistente del DB in un file temporaneo con l'API di backup di GRDB (`try dbPool.backup(to: destinationQueue)`), sicura anche con l'app in uso;
-  2. `VACUUM` sulla copia, per un file compatto e senza WAL separato;
-  3. consegna all'utente:
+  1. copia consistente del DB in un file temporaneo con `sqlcipher_export`, sulla connessione di scrittura, sicura anche con l'app in uso. Il file è compatto e senza WAL separato. L'API di backup di SQLite, usata prima della cifratura, non copia tra un file cifrato e uno in chiaro;
+  2. consegna all'utente:
      - **iOS/iPadOS:** foglio di condivisione di sistema, che include AirDrop, Salva su File, Mail e Messaggi. Non `ShareLink`, che non segnala quando ha finito;
      - **macOS:** `fileMover`, cioè il pannello Salva, che sposta il file temporaneo dove sceglie l'utente.
 - **Opzioni** prima dell'export: "Proteggi con password", attiva di default. Password di almeno 8 caratteri, con conferma. Non è recuperabile: se viene dimenticata, il file non si apre più.

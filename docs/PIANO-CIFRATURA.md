@@ -203,7 +203,7 @@ Ogni step si chiude con il codice che compila e i test che passano. Compilazione
   - un database nuovo nasce cifrato; uno **in chiaro** di prima della cifratura si apre ancora senza chiave, così lo step 3 non rompe le installazioni esistenti. Lo step 4 sostituisce questo passaggio con la migrazione;
   - un database cifrato e una sessione senza chiave (Face ID con il vecchio token) chiedono il PIN;
   - "ci sono dati?" senza aprire il database (§ 3.6): nessun file, no; file in chiaro, lo si legge; file cifrato, sì se accanto c'è il segno `homefinances.sqlite.seeded`, lasciato dall'inserimento dei dati iniziali e dall'import;
-  - fino allo step 5 export, import e copie di sicurezza funzionano solo con il database in chiaro: con quello cifrato l'export fallisce con un errore e l'import si ferma prima di toccare i dati;
+  - fino allo step 5 export, import e copie di sicurezza funzionavano solo con il database in chiaro;
   - la chiave resta in memoria finché l'`AppDatabase` chiuso non viene rilasciato: Swift non garantisce di poterla azzerare.
 - **Step 4:**
   - la migrazione parte all'apertura con la chiave, quindi al primo sblocco con il PIN (o con Face ID, dopo che il PIN ha sostituito il token); senza chiave il database resta in chiaro;
@@ -211,6 +211,12 @@ Ogni step si chiude con il codice che compila e i test che passano. Compilazione
   - il segnaposto `homefinances.sqlite.encryption-migration` dice solo che una migrazione è cominciata: a ogni tentativo si decide dal formato reale dei file, quindi un'interruzione in qualsiasi punto riparte senza perdere dati;
   - se la migrazione fallisce (per esempio per lo spazio) tutto resta com'era, il database si apre in chiaro e si riprova al prossimo sblocco; l'errore è in `DatabaseStore.encryptionMigrationError`, da mostrare allo step 6;
   - l'apertura dello store è asincrona e la migrazione gira lontano dal main thread; un blocco durante la migrazione non apre nulla, e uno sblocco successivo riparte con la nuova chiave.
+- **Step 5:**
+  - una sola funzione di copia, `AppDatabase.exportCopy(to:encryptionKey:)`, con `sqlcipher_export` sulla connessione di scrittura: in chiaro per l'export, cifrata con la chiave del dispositivo per le copie "prima-import". L'API di backup di SQLite, usata prima, non copia tra file con cifrature diverse;
+  - l'import cifra e controlla il file (come la migrazione, § 3.8) in una copia accanto al database (`incoming-….sqlite`) **prima** di fare la copia di sicurezza e di chiudere il database in uso: se la cifratura non riesce, non è cambiato nulla;
+  - "Annulla ultimo import" e il ripristino dopo un errore usano le copie così come sono, già cifrate;
+  - copie preparate e rimaste per un'interruzione si cancellano all'avvio;
+  - senza chiave (database ancora in chiaro, Face ID con il vecchio token) tutto resta in chiaro come prima, e lo cifra la migrazione al primo sblocco con il PIN.
 
 ### 4.4 Rischi
 

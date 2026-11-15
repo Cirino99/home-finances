@@ -6,8 +6,8 @@ public enum DatabaseEncryptionError: Error, Equatable {
     case verificationFailed
 }
 
-/// Copie tra file in chiaro e file cifrati con SQLCipher (§ 5.7). Le usano la migrazione dei dati
-/// esistenti e, dallo step 5, export e import.
+/// Copie da file in chiaro a file cifrati con SQLCipher (§ 5.7). Le usano la migrazione dei dati
+/// esistenti e l'import. La copia in chiaro per l'export è `AppDatabase.exportCopy(to:encryptionKey:)`.
 enum DatabaseEncryption {
     /// Scrive in `destination` una copia cifrata con `key` del database in chiaro `plaintext`,
     /// con `sqlcipher_export`. `destination` non deve esistere.
@@ -58,6 +58,17 @@ enum DatabaseEncryption {
         }
     }
 
+    /// Copia cifrata e controllata di `plaintext`. Se il controllo non riesce, la copia non resta.
+    static func encryptedCopy(of plaintext: URL, to destination: URL, key: String) throws {
+        do {
+            try exportEncrypted(from: plaintext, to: destination, key: key)
+            try verify(encrypted: destination, key: key, matches: plaintext)
+        } catch {
+            try? FileManager.default.removeItem(at: destination)
+            throw error
+        }
+    }
+
     /// Sostituisce il file `url`, in chiaro, con la sua versione cifrata: esporta accanto, controlla,
     /// sostituisce in modo atomico. Se qualcosa va storto l'originale resta com'è.
     static func encryptInPlace(_ url: URL, key: String) throws {
@@ -65,8 +76,7 @@ enum DatabaseEncryption {
         let temporary = URL(filePath: url.path + ".encrypting")
         try? fileManager.removeItem(at: temporary)
         do {
-            try exportEncrypted(from: url, to: temporary, key: key)
-            try verify(encrypted: temporary, key: key, matches: url)
+            try encryptedCopy(of: url, to: temporary, key: key)
             // I file di appoggio appartengono al file in chiaro: dopo il checkpoint non contengono più nulla.
             for suffix in ["-wal", "-shm"] {
                 try? fileManager.removeItem(at: URL(filePath: url.path + suffix))

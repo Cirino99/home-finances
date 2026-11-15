@@ -58,6 +58,7 @@ public final class DatabaseStore: DataTransferring {
         self.opener = opener ?? { try AppDatabase.open(at: $0, deviceName: deviceName, encryptionKey: $1) }
         // I file di dati non cifrati non devono sopravvivere a una chiusura inattesa dell'app.
         try? FileManager.default.removeItem(at: temporaryDirectory)
+        removeLeftoverStagedFiles()
         hasBackup = !existingBackups().isEmpty
         if let excluded = try? databaseDirectory?.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup {
             isIncludedInSystemBackup = !excluded
@@ -213,6 +214,8 @@ public final class DatabaseStore: DataTransferring {
     public func exportDatabase(password: String? = nil) async throws -> URL {
         let database = try currentDatabase()
         let destination = try newTemporaryFolder().appending(path: exportFileName(extension: "homefinances", device: deviceName))
+        // In chiaro anche dal database cifrato (§ 10.2): il file deve aprirsi su un altro dispositivo, con
+        // un'altra chiave. A proteggerlo, se l'utente la sceglie, è la password.
         try await database.exportCopy(to: destination)
         if let password {
             do {
@@ -311,10 +314,13 @@ public final class DatabaseStore: DataTransferring {
 
         // Si ricontrolla: il file temporaneo potrebbe essere cambiato dopo l'anteprima.
         _ = try await Self.validate(fileAt: preview.fileURL)
+        // Cifrato prima di toccare il database in uso: se non riesce, non è cambiato nulla.
+        let staged = try await stage(preview.fileURL)
+        defer { try? FileManager.default.removeItem(at: staged) }
         let backup = try await makeBackup(of: database)
 
         do {
-            return try await replaceDatabase(closing: database, with: preview.fileURL)
+            return try await replaceDatabase(closing: database, with: staged)
         } catch {
             restoreAfterFailure(from: backup)
             throw error
@@ -324,7 +330,9 @@ public final class DatabaseStore: DataTransferring {
     public func undoLastImport() async throws -> Int {
         let database = try currentDatabase()
         guard let backup = existingBackups().last else { throw DataTransferError.noBackup }
-        let count = try await replaceDatabase(closing: database, with: backup)
+        let staged = try await stage(backup)
+        defer { try? FileManager.default.removeItem(at: staged) }
+        let count = try await replaceDatabase(closing: database, with: staged)
         // Usata: il prossimo annullamento risalirà alla copia precedente.
         try? FileManager.default.removeItem(at: backup)
         hasBackup = !existingBackups().isEmpty
@@ -337,10 +345,11 @@ public final class DatabaseStore: DataTransferring {
         try DatabaseInspector.validate(fileAt: url)
     }
 
-    private func replaceDatabase(closing database: AppDatabase, with file: URL) async throws -> Int {
+    /// `staged` viene da `stage(_:)`: è già nella cartella del database, nel formato giusto.
+    private func replaceDatabase(closing database: AppDatabase, with staged: URL) async throws -> Int {
         guard let url else { throw DataTransferError.databaseUnavailable }
         try database.close()
-        try swapDatabaseFile(at: url, with: file)
+        try swapDatabaseFile(at: url, with: staged)
         let reopened = try opener(url, openingKey(for: url))
         state = .ready(reopened)
         if (try? reopened.isSeeded()) == true {
@@ -355,27 +364,64 @@ public final class DatabaseStore: DataTransferring {
         AppDatabase.fileFormat(at: url) == .plaintext ? nil : encryptionKey
     }
 
-    /// La copia si fa nella stessa cartella del database: solo così la sostituzione è atomica.
-    private func swapDatabaseFile(at url: URL, with file: URL) throws {
+    /// Copia di `file` pronta a prendere il posto del database, nella sua stessa cartella: solo così
+    /// la sostituzione è atomica. Con la chiave, un file in chiaro (un import) diventa cifrato e viene
+    /// controllato prima di usarlo (§ 5.7): sul disco dell'app i dati restano solo cifrati.
+    private func stage(_ file: URL) async throws -> URL {
+        let staged = try stagingURL()
+        if let encryptionKey, AppDatabase.fileFormat(at: file) == .plaintext {
+            try await Self.encryptedCopy(of: file, to: staged, key: encryptionKey)
+        } else {
+            try FileManager.default.copyItem(at: file, to: staged)
+        }
+        return staged
+    }
+
+    /// Copie preparate da un import o da un annullamento interrotti a metà: non servono più.
+    private func removeLeftoverStagedFiles() {
+        guard let databaseDirectory,
+              let files = try? FileManager.default.contentsOfDirectory(at: databaseDirectory, includingPropertiesForKeys: nil)
+        else { return }
+        for file in files where file.lastPathComponent.hasPrefix(Self.stagingPrefix) {
+            try? FileManager.default.removeItem(at: file)
+        }
+    }
+
+    private static let stagingPrefix = "incoming-"
+
+    private func stagingURL() throws -> URL {
+        guard let databaseDirectory else { throw DataTransferError.databaseUnavailable }
+        return databaseDirectory.appending(path: "\(Self.stagingPrefix)\(UUID().uuidString).sqlite")
+    }
+
+    /// Lontano dal main actor: su un file grande copia e controllo richiedono tempo.
+    @concurrent
+    private nonisolated static func encryptedCopy(of file: URL, to destination: URL, key: String) async throws {
+        try DatabaseEncryption.encryptedCopy(of: file, to: destination, key: key)
+    }
+
+    /// Mette `staged` al posto del database, chiuso. Se non riesce, `staged` si cancella.
+    private func swapDatabaseFile(at url: URL, with staged: URL) throws {
         let fileManager = FileManager.default
-        let incoming = url.deletingLastPathComponent().appending(path: "incoming-\(UUID().uuidString).sqlite")
-        try fileManager.copyItem(at: file, to: incoming)
         do {
             for suffix in ["-wal", "-shm"] {
                 try? fileManager.removeItem(at: URL(filePath: url.path + suffix))
             }
-            _ = try fileManager.replaceItemAt(url, withItemAt: incoming)
+            _ = try fileManager.replaceItemAt(url, withItemAt: staged)
         } catch {
-            try? fileManager.removeItem(at: incoming)
+            try? fileManager.removeItem(at: staged)
             throw error
         }
     }
 
     /// Qualcosa è andato storto dopo la chiusura del database: si torna alla copia di sicurezza (§ 10.4).
+    /// La copia è già nel formato del database, cifrata se lo era: basta copiarla.
     private func restoreAfterFailure(from backup: URL) {
         guard let url else { return }
         do {
-            try swapDatabaseFile(at: url, with: backup)
+            let staged = try stagingURL()
+            try FileManager.default.copyItem(at: backup, to: staged)
+            try swapDatabaseFile(at: url, with: staged)
             state = .ready(try opener(url, openingKey(for: url)))
         } catch {
             state = .failed(error)
@@ -404,7 +450,9 @@ public final class DatabaseStore: DataTransferring {
         try FileManager.default.createDirectory(at: backupsDirectory, withIntermediateDirectories: true)
         let name = "prima-import-\(timestamp(spaced: false))-\(UUID().uuidString.prefix(4)).homefinances"
         let backup = backupsDirectory.appending(path: name)
-        try await database.exportCopy(to: backup)
+        // Cifrata come il database (§ 5.7). Senza chiave (database ancora in chiaro) resta in chiaro,
+        // e la cifra la migrazione al prossimo sblocco con il PIN.
+        try await database.exportCopy(to: backup, encryptionKey: encryptionKey)
         for old in existingBackups().dropLast(Self.maxBackups) {
             try? FileManager.default.removeItem(at: old)
         }
@@ -419,23 +467,30 @@ public final class DatabaseStore: DataTransferring {
 }
 
 extension AppDatabase {
-    /// Copia consistente, sicura anche con l'app in uso, compatta e senza WAL separato (§ 10.3).
+    /// Copia consistente in un file nuovo, sicura anche con l'app in uso, compatta e senza WAL separato (§ 10.3).
+    ///
+    /// Con `encryptionKey` la copia è cifrata con quella chiave, senza è in chiaro, qualunque sia il database
+    /// di partenza (§ 5.7): `sqlcipher_export` riscrive tutto con la cifratura della destinazione. L'API di
+    /// backup di SQLite, usata prima della cifratura, non copia tra file con cifrature diverse.
     @concurrent
-    func exportCopy(to destination: URL) async throws {
-        let queue = try DatabaseQueue(path: destination.path)
+    func exportCopy(to destination: URL, encryptionKey: String? = nil) async throws {
         do {
-            try writer.backup(to: queue)
-            try await queue.writeWithoutTransaction { db in
-                // La copia eredita il WAL dall'originale: tutti i dati devono finire nel file principale.
-                guard try String.fetchOne(db, sql: "PRAGMA journal_mode = DELETE") == "delete" else {
+            // Sulla connessione di scrittura: nessuna scrittura può inserirsi a metà copia.
+            try await writer.writeWithoutTransaction { db in
+                // Con la chiave vuota il file collegato è in chiaro.
+                try db.execute(
+                    sql: "ATTACH DATABASE ? AS destination KEY ?",
+                    arguments: [destination.path, encryptionKey ?? ""]
+                )
+                defer { try? db.execute(sql: "DETACH DATABASE destination") }
+                // Un file a sé, senza il WAL dell'originale: tutti i dati nel file principale.
+                guard try String.fetchOne(db, sql: "PRAGMA destination.journal_mode = DELETE") == "delete" else {
                     throw DataTransferError.databaseUnavailable
                 }
-                try db.execute(sql: "VACUUM")
+                try db.execute(sql: "SELECT sqlcipher_export('destination')")
             }
-            try queue.close()
             Self.removeSidecarFiles(of: destination)
         } catch {
-            try? queue.close()
             Self.removeSidecarFiles(of: destination)
             try? FileManager.default.removeItem(at: destination)
             throw error

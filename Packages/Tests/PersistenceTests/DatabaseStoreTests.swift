@@ -22,6 +22,7 @@ final class DatabaseStoreTests {
     func makeStore(
         _ name: String,
         operations: Int = 0,
+        encryptionKey: String? = nil,
         opener: ((URL, String?) throws -> AppDatabase)? = nil
     ) async throws -> DatabaseStore {
         let store = DatabaseStore(
@@ -31,8 +32,8 @@ final class DatabaseStoreTests {
             passwordIterations: 1000,
             opener: opener
         )
-        // In chiaro: export e import di un database cifrato arrivano con lo step 5 del piano della cifratura.
-        await store.open(encryptionKey: nil)
+        // In chiaro di default: i casi del database cifrato sono nella loro sezione.
+        await store.open(encryptionKey: encryptionKey)
         let database = try currentDatabase(of: store)
         try await database.seedIfNeeded(currency: "EUR")
         for index in 0..<operations {
@@ -570,6 +571,124 @@ final class DatabaseStoreTests {
 
         let restarted = DatabaseStore(url: databaseURL("target"), deviceName: "Test")
         #expect(!restarted.isIncludedInSystemBackup)
+    }
+
+    // MARK: Database cifrato (§ 5.7)
+
+    static let key = "x'" + String(repeating: "a5", count: 32) + "'"
+    static let otherKey = "x'" + String(repeating: "5a", count: 32) + "'"
+
+    /// Nella cartella del database, copie di sicurezza comprese, niente in chiaro e nessuna copia preparata rimasta.
+    func expectOnlyEncryptedFiles(of name: String, sourceLocation: SourceLocation = #_sourceLocation) throws {
+        let folder = databaseURL(name).deletingLastPathComponent()
+        let files = try #require(FileManager.default.enumerator(at: folder, includingPropertiesForKeys: nil))
+        for case let file as URL in files {
+            #expect(!file.lastPathComponent.hasPrefix("incoming-"), "\(file.lastPathComponent) rimasto", sourceLocation: sourceLocation)
+            guard ["sqlite", "homefinances"].contains(file.pathExtension) else { continue }
+            #expect(AppDatabase.fileFormat(at: file) == .encrypted, "\(file.lastPathComponent) in chiaro", sourceLocation: sourceLocation)
+        }
+    }
+
+    @Test func encryptedDatabaseExportsAPlaintextFile() async throws {
+        let store = try await makeStore("source", operations: 2, encryptionKey: Self.key)
+        let exported = try await store.exportDatabase()
+
+        #expect(AppDatabase.fileFormat(at: exported) == .plaintext, "Il formato di sempre (§ 10.2)")
+        let folder = try FileManager.default.contentsOfDirectory(atPath: exported.deletingLastPathComponent().path)
+        #expect(folder == [exported.lastPathComponent], "Nessun file di appoggio accanto alla copia")
+        let summary = try DatabaseInspector.validate(fileAt: exported)
+        #expect(summary.movementCount == 2)
+        #expect(summary.lastModifiedBy == "Test")
+    }
+
+    @Test func exportDuringWritesOnEncryptedDatabaseIsConsistent() async throws {
+        let store = try await makeStore("a", operations: 3, encryptionKey: Self.key)
+        let database = try currentDatabase(of: store)
+
+        async let export = store.exportDatabase()
+        for day in 4...20 {
+            try await add(to: database, day: day)
+        }
+        let summary = try DatabaseInspector.validate(fileAt: try await export)
+        #expect((3...20).contains(summary.movementCount))
+    }
+
+    /// Da un dispositivo all'altro: chiavi diverse, stesso file.
+    @Test func exportFromEncryptedDatabaseImportsWithAnotherKey() async throws {
+        let source = try await makeStore("source", operations: 3, encryptionKey: Self.key)
+        try await addTransfer(to: try currentDatabase(of: source))
+        let target = try await makeStore("target", operations: 1, encryptionKey: Self.otherKey)
+
+        #expect(try await target.performImport(try await target.prepareImport(from: try await source.exportDatabase())) == 4)
+        #expect(try await transferCount(in: target) == 1)
+        try expectOnlyEncryptedFiles(of: "target")
+
+        target.close()
+        await target.open(encryptionKey: Self.otherKey)
+        #expect(try await count(in: target) == 3, "Si riapre con la chiave del dispositivo")
+    }
+
+    @Test func protectedExportFromEncryptedDatabaseImports() async throws {
+        let source = try await makeStore("source", operations: 3, encryptionKey: Self.key)
+        let target = try await makeStore("target", operations: 1, encryptionKey: Self.otherKey)
+        let exported = try await source.exportDatabase(password: "una password lunga")
+        #expect(EncryptedDatabaseFile.isEncrypted(try Data(contentsOf: exported)))
+
+        let preview = try await target.prepareImport(from: exported, password: "una password lunga")
+        #expect(try await target.performImport(preview) == 3)
+        try expectOnlyEncryptedFiles(of: "target")
+    }
+
+    /// I file esportati prima della cifratura restano importabili, e diventano cifrati.
+    @Test func plaintextFileFromPreviousVersionIsEncryptedOnImport() async throws {
+        let target = try await makeStore("target", operations: 1, encryptionKey: Self.key)
+        let preview = try await target.prepareImport(from: try makeVersion1File(operations: 2))
+
+        #expect(try await target.performImport(preview) == 2)
+        #expect(try await count(in: target) == 2)
+        try expectOnlyEncryptedFiles(of: "target")
+        let bytes = try Data(contentsOf: databaseURL("target"))
+        #expect(bytes.range(of: Data(DefaultData.accountName.utf8)) == nil, "Nessun dato leggibile nel file")
+    }
+
+    @Test func undoWithEncryptedBackupRestoresPreviousData() async throws {
+        let source = try await makeStore("source", operations: 3)
+        let target = try await makeStore("target", operations: 1, encryptionKey: Self.key)
+        _ = try await target.performImport(try await target.prepareImport(from: try await source.exportDatabase()))
+        try expectOnlyEncryptedFiles(of: "target")
+
+        #expect(try await target.undoLastImport() == 1)
+        #expect(try await count(in: target) == 1)
+        try expectOnlyEncryptedFiles(of: "target")
+    }
+
+    @Test func failureDuringReplacementRestoresEncryptedBackup() async throws {
+        let source = try await makeStore("source", operations: 3)
+        let opens = OpenCounter()
+        let target = try await makeStore("target", operations: 1, encryptionKey: Self.key) { fileURL, key in
+            opens.count += 1
+            // La riapertura dopo la sostituzione fallisce; quella dopo il ripristino riesce.
+            if opens.count == 2 {
+                throw DataTransferError.databaseUnavailable
+            }
+            return try AppDatabase.open(at: fileURL, deviceName: "Test", encryptionKey: key)
+        }
+        let preview = try await target.prepareImport(from: try await source.exportDatabase())
+
+        await #expect(throws: DataTransferError.databaseUnavailable) {
+            _ = try await target.performImport(preview)
+        }
+        #expect(try await count(in: target) == 1, "Nessuna perdita di dati")
+        try expectOnlyEncryptedFiles(of: "target")
+    }
+
+    @Test func leftoverStagedFilesAreRemovedAtLaunch() async throws {
+        _ = try await makeStore("a")
+        let leftover = databaseURL("a").deletingLastPathComponent().appending(path: "incoming-\(UUID().uuidString).sqlite")
+        FileManager.default.createFile(atPath: leftover.path, contents: Data("a metà".utf8))
+
+        _ = DatabaseStore(url: databaseURL("a"), deviceName: "Test", temporaryDirectory: root.appending(path: "tmp-a"))
+        #expect(!FileManager.default.fileExists(atPath: leftover.path))
     }
 
     // MARK: Apertura
